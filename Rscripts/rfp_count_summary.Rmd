@@ -1,0 +1,152 @@
+---
+title: "RFP Colocalization"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+```{r htmlsetup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r functions, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(MASS)
+library(knitr)
+library(kableExtra)
+library(ggbeeswarm)
+library(gridExtra)
+library(ggpubr)
+source(here::here("./Rscripts/colocalization_functions.R"))
+
+```
+
+
+```{r setup, include=FALSE, warning=FALSE, message=FALSE}
+
+sex_analyze <- c("M", "F")
+correct_p <- TRUE
+agg_full_img <- FALSE 
+plot_all_agg <- FALSE 
+toprocess <- "rfp"
+
+
+mouseinfo <- read_xlsx(paste0(here::here(), "/mouse_id_info.xlsx"), sheet="RFP")
+outputs_raw <- list.files(paste0(here::here(), "/out/"), pattern="*.xlsx", recursive = T, full.names = T)
+# fix Hz label
+mouseinfo$GT <- str_replace_all(mouseinfo$GT, "HZ", "Hz")
+if ("Notes" %in% names(mouseinfo)) {
+  mouseinfo <- mouseinfo[,-which(names(mouseinfo) == "Notes")]
+}
+
+noaavmice <- mouseinfo %>% 
+  filter(Virus == "No AAV") %>% 
+  pull(ID)
+
+nonday7mice <- mouseinfo %>% 
+  filter(Day != 7 | Virus == "No AAV") %>% 
+  pull(ID)
+
+notfemalemice <- mouseinfo %>% 
+  filter(Sex != "F" | Virus == "No AAV") %>% 
+  pull(ID)
+
+# separate out the additional sections to look at separately
+outputs_all <- outputs_raw[!grepl("out_sep", outputs_raw)] 
+outputs_all <- outputs_all[grep(toprocess, outputs_all)]
+outputs <- outputs_all
+
+rfp_calc_key <- list(tdt_express_rfp = "tdt rfp / tdt",
+                       rfp_express_tdt = "tdt rfp / rfp")
+
+formlst <- list(rfp=rfp_calc_key)
+
+outs_sec1 <- createOuts(datfls=outputs, formnms=formlst, dapithresh=0)
+sumOuts_sec1 <- outs_sec1$split_section_output
+fullOuts_sec1 <- outs_sec1$full_slide_output
+
+# List of sumOuts and slices
+if (agg_full_img) {
+  sumOuts_list <- list(fullOuts_sec1)
+} else {
+  sumOuts_list <- list(sumOuts_sec1)
+}
+slices <- 1
+
+# Process each section and bind the results
+rfp_df1 <- map2_dfr(sumOuts_list, slices, ~ processSection(.x, .y, "rfp", mouseinfo, sex_analyze))
+
+# set order
+basenms_select <- c("section", "id", "type", "slice", "Day", "GT", "Sex", "Virus")
+if (nrow(rfp_df1) > 0) {
+  rfp_df1 <- rfp_df1 %>%
+    dplyr::select(any_of(basenms_select), matches("express"))
+  rfp_df1$Virus <- factor(rfp_df1$Virus, levels=c("No AAV", "WT-AAV", "Mut-AAV"))
+}
+
+rfp_start_idx <- min(grep('express', names(rfp_df1)))
+
+# RFP
+rfp_plt_out <- processDF(df=rfp_df1, x_var="Day", col_var="Virus", calc_key=rfp_calc_key, start_idx=rfp_start_idx,
+                         plotallagg=plot_all_agg, labelsize=17, make_manual_plot=T, ids_rm=noaavmice) # nonday7mice #noaavmice  #notfemalemice
+rfp_df <- rfp_plt_out$df
+
+# Note: plot_out_X is a nested list of N long, where N is the number of parameters (lcn2 tdt spc / tdt, etc.) analyzed.
+# For each of these, there is another list of 2 long, containing the plots and the wilcox test summaries.
+# The plot length is 3
+plot_vars_rfp <- rfp_plt_out$plot_vars
+plot_out_rfp <- rfp_plt_out$plot_lst
+plot_lst_rfp <- lapply(plot_out_rfp, `[[`, 1)
+plot_tst_rfp <- lapply(plot_out_rfp, `[[`, 2)
+dfsmrys_rfp.l <- lapply(plot_tst_rfp, `[[`, 3)
+# replace param with calc key
+dfsmrys_rfp.l <- lapply(dfsmrys_rfp.l, function(x) {
+  x$param <- rfp_calc_key[[unique(x$param)]]
+  x <- x[order(x$Day, x$Virus, desc(x$Sex)), ]
+  return(x)
+  })
+
+
+all_dfs <- list(rfp=rfp_df)
+
+funckeys <- list(rfp=rfp_calc_key)
+
+```
+
+#### Plotting percentages calculated per each 9x4 section with DAPI count > 1,000; tdt > 10
+
+# RFP 
+## Analysis of `r ifelse(sex_analyze == "M", yes="Male", no=ifelse(sex_analyze == "F", yes="Female", no="NA"))` mice treated with `r unique(rfp_df$Virus)`
+
+```{r info, echo=FALSE, message=FALSE}
+if (!is.null(rfp_df) & 'section' %in% names(rfp_df)) {
+  print(paste("IDs:", paste(unique(rfp_df$id), collapse=", ")))
+  print(paste("Sex:", paste(unique(rfp_df$Sex), collapse=", ")))
+  sectiondf1 <- rfp_df %>% 
+    group_by(id, slice) %>% 
+    summarise(sections_used = paste(unique(section), collapse=", "))
+  kable(sectiondf1)
+}
+```
+
+
+#### Wilcoxon-Mann-Whitney test performed on 'slices combined' compare GT across mice per day
+#### and GT per day between males and females, separately
+
+```{r plot_facet, echo=FALSE, fig.height=20, fig.width=19, warning=FALSE, message=FALSE, results='hide'}
+if (!is.null(rfp_df)) {
+  # good dims: 6x17
+  # new good dims: height=27, width=17
+  if (class(plot_lst_rfp) != "try-error") {
+    for (pltgrp in plot_lst_rfp) {
+      heights <- c(1, 2)
+      newgrp <- pltgrp[-3]
+      print(newgrp)
+      cat('\n\n\n\n')
+    }
+  } else {
+    print(paste("No data for sex", sex_analyze))
+  }
+}
+```

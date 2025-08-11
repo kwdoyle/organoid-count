@@ -1,0 +1,8 @@
+*.html
+.Rproj.user/
+notneeded/
+out/
+*.xlsx
+*.Rproj
+*.pyc
+.Rhistory

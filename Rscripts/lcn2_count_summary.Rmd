@@ -1,0 +1,233 @@
+---
+title: "Lcn2 Colocalization"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+```{r htmlsetup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r functions, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(MASS)
+library(knitr)
+library(kableExtra)
+library(ggbeeswarm)
+library(gridExtra)
+library(ggpubr)
+source(here::here("./Rscripts/colocalization_functions.R"))
+
+```
+
+
+```{r datasetup, include=FALSE, warning=FALSE, message=FALSE}
+
+sex_analyze <- c("M", "F")
+correct_p <- TRUE
+agg_full_img <- FALSE 
+plot_all_agg <- TRUE 
+shownewplot <- TRUE 
+showsections <- TRUE 
+correctp <- TRUE 
+toprocess <- "lcn2"
+
+# key for calculations
+lcn2_calc_key <- list(tdt_express_lcn2 = "lcn2 tdt / tdt",
+                       lcn2_express_tdt = "lcn2 tdt / lcn2",
+                       spc_express_lcn2 = "lcn2 spc / spc",
+                       lcn2_express_spc = "lcn2 spc / lcn2",
+                       lcn2_spc_express_tdt = "lcn2 spc / tdt",
+                       tdt_express_lcn2_spc = "lcn2 tdt spc / tdt",
+                       tdt_express_spc_minus_lcn2 = "tdt spc minus lcn2 / tdt",
+                       tdt_express_spc = "tdt spc / tdt",
+                       spc_express_tdt = "tdt spc / spc",
+                       dapi_express_tdt_spc = "tdt spc / dapi",
+                       tdt_spc_express_lcn2 = "lcn2 tdt spc / tdt spc")
+
+
+formlst <- list(lcn2=lcn2_calc_key)
+
+mouseinfo <- read_xlsx(paste0(here::here(), "/mouse_id_info.xlsx"))
+outputs_raw <- list.files(paste0(here::here(), "/out/"), pattern="*.xlsx", recursive = T, full.names = T)
+# fix Hz label
+mouseinfo$GT <- str_replace_all(mouseinfo$GT, "HZ", "Hz")
+
+# separate out the additional sections to look at separately
+outputs_all <- outputs_raw[!grepl("out_sep", outputs_raw)] 
+outputs_all <- outputs_all[grep(toprocess, outputs_all)]
+
+# separate out the additional sections to look at separately
+outputs <- outputs_all[!grepl("addtl_sections", outputs_all)]
+outputs_sec2 <- outputs_all[grepl("addtl_sections2", outputs_all)]
+outputs_sec3 <- outputs_all[grepl("addtl_sections3", outputs_all)]
+
+
+outs_sec1 <- createOuts(datfls=outputs, formnms=formlst, dapithresh=1000)
+sumOuts_sec1 <- outs_sec1$split_section_output
+fullOuts_sec1 <- outs_sec1$full_slide_output
+
+outs_sec2 <- createOuts(datfls=outputs_sec2, formnms=formlst, dapithresh=1000)
+sumOuts_sec2 <- outs_sec2$split_section_output
+fullOuts_sec2 <- outs_sec2$full_slide_output
+
+outs_sec3 <- createOuts(datfls=outputs_sec3, formnms=formlst, dapithresh=1000)
+sumOuts_sec3 <- outs_sec3$split_section_output
+fullOuts_sec3 <- outs_sec3$full_slide_output
+
+# List of sumOuts and slices
+if (agg_full_img) {
+  sumOuts_list <- list(fullOuts_sec1, fullOuts_sec2, fullOuts_sec3)
+} else {
+  sumOuts_list <- list(sumOuts_sec1, sumOuts_sec2, sumOuts_sec3)
+}
+slices <- 1:3
+
+# Process each section and bind the results
+lcn2_df1 <- map2_dfr(sumOuts_list, slices, ~ processSection(.x, .y, "lcn2", mouseinfo, sex_analyze))
+
+# set order
+basenms_select <- c("section", "id", "type", "slice", "Day", "GT", "Sex", "BleoDose")
+if (nrow(lcn2_df1) > 0) {
+  lcn2_df1 <- lcn2_df1 %>%
+    dplyr::select(any_of(basenms_select), spc_express_tdt, tdt_express_spc, dapi_express_tdt_spc,
+                  tdt_express_spc_minus_lcn2, tdt_express_lcn2_spc, spc_express_lcn2, lcn2_spc_express_tdt, 
+                  tdt_express_lcn2, tdt_spc_express_lcn2, lcn2_express_tdt, lcn2_express_spc)
+}
+
+
+lcn2_start_idx <- min(grep('express', names(lcn2_df1)))
+
+# Lcn2
+lcn2_plt_out <- processDF(df=lcn2_df1, calc_key=lcn2_calc_key, start_idx=lcn2_start_idx, plotallagg=plot_all_agg,
+                          show_p_correct=correctp, labelsize=20, ptsize=1.5, rm_outliers=F, makemainfig=T)
+lcn2_df <- lcn2_plt_out$df
+
+# Note: plot_out_X is a nested list of N long, where N is the number of parameters (lcn2 tdt spc / tdt, etc.) analyzed.
+# For each of these, there is another list of 2 long, containing the plots and the wilcox test summaries.
+# The plot length is 3
+plot_vars_lcn2 <- lcn2_plt_out$plot_vars
+plot_out_lcn2 <- lcn2_plt_out$plot_lst
+plot_lst_lcn2 <- lapply(plot_out_lcn2, `[[`, 1)  # taking the 'plots' element of the list
+plot_tst_lcn2 <- lapply(plot_out_lcn2, `[[`, 2)  # taking the 'tests' element of the list
+dayGTtests_lcn2.l <- lapply(plot_tst_lcn2, `[[`, 1)
+# full test df
+dayGTtests_lcn2 <- bind_rows(dayGTtests_lcn2.l)
+# check data in test
+dayGTtests_lcn2.plots.l <- lapply(plot_tst_lcn2, `[[`, 2)
+names(dayGTtests_lcn2.plots.l) <- sapply(plot_tst_lcn2, function(x) unique(x$wilcoxdf$param))
+
+
+# replace the param value with the calc_key value
+dayGTtests_lcn2 <- dayGTtests_lcn2 %>% 
+  dplyr::rename(param2=param) %>% 
+  left_join(data.frame(nm=names(lcn2_calc_key), param=unlist(lcn2_calc_key, use.names=F)), by=c("param2"="nm")) 
+dayGTtests_lcn2 <- dayGTtests_lcn2[,-which(names(dayGTtests_lcn2) == "param2")]
+
+
+# turn to scientific notation
+dayGTtests_lcn2$p_signif <- ifelse(dayGTtests_lcn2$p_adj < 0.05, 1, 0)
+
+dayGTtests_lcn2$p_value <- format(dayGTtests_lcn2$p_value, scientific=T, digits=3)
+dayGTtests_lcn2$p_adj <- format(dayGTtests_lcn2$p_adj, scientific=T, digits=3)
+
+all_dfs <- list(lcn2=lcn2_df)
+
+funckeys <- list(lcn2=lcn2_calc_key)
+
+# if tests don't exist, set to NULL
+if (nrow(dayGTtests_lcn2) != 0) {
+  lcn2tst <- dayGTtests_lcn2
+} else {
+  lcn2tst <- NULL
+}
+
+```
+
+#### Plotting percentages calculated per each 9x4 section with DAPI count > 1,000; SPC > 10; tdt > 10
+
+# Lcn2
+## Analysis of `r ifelse(sex_analyze == "M", yes="Male", no=ifelse(sex_analyze == "F", yes="Female", no="NA"))` mice treated with `r unique(lcn2_df$BleoDose)` U/kg bleomycin
+
+```{r info_lcn2, echo=FALSE, message=FALSE, eval=showsections}
+if (!is.null(lcn2_df) & 'section' %in% names(lcn2_df)) {
+  print(paste("IDs:", paste(unique(lcn2_df$id), collapse=", ")))
+  print(paste("Sex:", paste(unique(lcn2_df$Sex), collapse=", ")))
+  sectiondf1 <- lcn2_df %>% 
+    group_by(id, slice) %>% 
+    summarise(sections_used = paste(unique(section), collapse=", "))
+  kable(sectiondf1)
+}
+```
+
+
+#### Wilcoxon-Mann-Whitney test performed on 'slices combined' compare GT across mice per day
+#### and GT per day between males and females, separately
+
+```{r plot_facet_lcn2, echo=FALSE, fig.height=20, fig.width=19, warning=FALSE, message=FALSE, results='hide', eval=!shownewplot}
+if (!is.null(lcn2_df)) {
+  # good dims: 6x17
+  # new good dims: height=27, width=17
+  # note: dimensions of plots are designed to view after knitting
+  
+  if (class(plot_lst_lcn2) != "try-error") {
+    for (pltgrp in plot_lst_lcn2) {
+      heights <- c(1, 2)
+      newgrp <- pltgrp[-3]
+      print(newgrp)
+      cat('\n\n\n\n')
+    }
+  } else {
+    print(paste("No data for sex", sex_analyze))
+  }
+}
+```
+
+
+```{r plot_main_lcn2, fig.height=10, fig.width=19, echo=FALSE, warning=FALSE, message=FALSE, results='hide', eval=shownewplot}
+if (!is.null(lcn2_df)) {
+  # good dims: 6x17
+  # new good dims: height=27, width=17
+  # note: dimensions of plots are designed to view after knitting
+  
+  if (class(plot_lst_lcn2) != "try-error") {
+    for (pltgrp in plot_lst_lcn2) {
+      heights <- c(1, 2)
+      newgrp <- pltgrp[3]
+      print(newgrp)
+      cat('\n\n\n\n')
+    }
+  } else {
+    print(paste("No data for sex", sex_analyze))
+  }
+}
+
+```
+
+### Wilcoxon-Mann-Whitney test
+##### Table shows test of GT per day for 'M+F slices combined'
+##### Bonferroni corrected across all `r length(unique(lcn2tst$Day))` day observations at alpha = 0.05
+##### separately for each `r length(unique(lcn2tst$param))` parameters tested for Lcn2 for GT per day
+##### alpha~new~ = 0.05 / `r length(unique(lcn2tst$Day))` = `r 0.05 / length(unique(lcn2tst$Day))`
+
+
+```{r lcn2test, echo=FALSE}
+  if (!is.null(lcn2tst)) {
+    kable(lcn2tst) %>% 
+      kable_styling %>% 
+      row_spec(which(lcn2tst$p_signif == 1), bold=T, hline_after=T, background="lightgrey") %>% 
+      remove_column(which(names(lcn2tst) == "p_signif"))
+  } else if (exists("lcn2_aov")) {  # not needed if not running anova
+    kable(lcn2_aov) %>% 
+      kable_styling %>% 
+      row_spec(which(lcn2_aov$p < 0.05), bold=T, hline_after=T, background="lightgrey")
+    kable(lcn2_aov) %>% 
+      kable_styling %>% 
+      row_spec(which(lcn2_aov$p < 0.05), bold=T, hline_after=T, background="lightgrey")
+  } else {
+    print("No comparison results for lcn2")
+  }
+
+```
