@@ -32,6 +32,9 @@ plot_all_agg <- FALSE
 toprocess <- "rfp"
 
 
+# Note: to run this summary script, will need to provide this table of sample IDs
+# columns should include: 'Day' (day sample was harvested), 'ID' (the numeric sample ID), 'GT' (sample genotype),
+# 'Sex' (sex of sample), and 'BleoDose' (amount of bleomycin sample received) or 'Virus' (GT of AAV sample received)
 mouseinfo <- read_xlsx(paste0(here::here(), "/mouse_id_info.xlsx"), sheet="RFP")
 outputs_raw <- list.files(paste0(here::here(), "/out/"), pattern="*.xlsx", recursive = T, full.names = T)
 # fix Hz label
