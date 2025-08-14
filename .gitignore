@@ -6,3 +6,4 @@ out/
 *.Rproj
 *.pyc
 .Rhistory
+.vscode/
