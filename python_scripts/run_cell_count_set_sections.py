@@ -143,13 +143,6 @@ if toprocess == "rfp":
       alldat.to_excel(savedir + '/out_sep/' + flnmtmp, index=False)
   
 elif toprocess == "spc":
-    # os.makedirs(savedir + "/sections/", exist_ok=True)
-    # os.makedirs(savedir + "/out_sep/", exist_ok=True)
-    # os.makedirs(savedir + "/spc/", exist_ok=True)
-    # os.makedirs(savedir + "/tdt/", exist_ok=True)
-    # os.makedirs(savedir + "/dapi/", exist_ok=True)
-    # os.makedirs(savedir + "/full/", exist_ok=True)
-    
     dapi_fl = [fl for fl in fls if "dapi" in fl.lower() and all(x.lower() not in fl.lower() for x in ['spc', 'tdt', 'merging', 'merged'])]
     spc_fl = [fl for fl in fls if "spc" in fl.lower() and all(x.lower() not in fl.lower() for x in ['dapi', 'tdt', 'rosa', 'merging', 'merged'])]
     tdt_fl = [fl for fl in fls if "rosa" in fl.lower() and all(x.lower() not in fl.lower() for x in ['dapi', 'merging', 'merged'])]
@@ -165,15 +158,6 @@ elif toprocess == "spc":
     tdt_img = process_file(tdt_fl)
     full_img = process_file(full_fl)
     
-    # section_dat = pd.DataFrame()
-    # for i in range(0, len(spc_img_split)):
-    #     print("Processing section " + str(i))
-    #     dapi_sec = dapi_img_split[i]
-    #     spc_sec = spc_img_split[i]
-    #     tdt_sec = tdt_img_split[i]
-    #     full_sec = full_img_split[i]
-    
-        # section = i+1
     try:
         spc_out = count.main(spc_img=spc_img, tdt_img=tdt_img, dapi_img=dapi_img, to_process="spc",
                             min_clean_size=min_clean_size, close_radius=close_radius, spc_watershed=spc_watershed, spc_sigma=spc_sigma,
@@ -182,17 +166,13 @@ elif toprocess == "spc":
                             plot=True, savedir=savedir, section=None, font=font)
     except ValueError as e:
         print(e)
-        # continue
     alldat = spc_out
-    # alldat['section'] = i + 1
-    # section_dat = pd.concat([section_dat, alldat], ignore_index=True)
-    # save sections for reference
+
     count.savefig(spc_img, savedir + "spc.png")
     count.savefig(tdt_img, savedir + "tdt.png")
     count.savefig(dapi_img, savedir + "dapi.png")
     count.savefig(full_img, savedir + "full.png")
-    # flnmtmp = '/' + id_nm + '_' + '_count_output.xlsx'
-    # alldat.to_excel(savedir + '/out_sep/' + flnmtmp, index=False)
+
 
   
 elif toprocess == "lcn2":
