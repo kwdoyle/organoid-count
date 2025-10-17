@@ -22,9 +22,9 @@ def process_file(fl_lst):
     fl = fl_lst[0]
     img = io.imread(basedir + '/' + fl)
     img2 = (lambda x: x[:,:,:3] if x.shape[2] == 4 else x)(img)  # remove alpha channel if it exists
-    img_split = subset_img(img2)
+    # img_split = subset_img(img2)  # shouldn't need to subset these smaller images
 
-    return img_split
+    return img2  # img_split
 
 
 def save_section_figs(section_img, section_name, section_num):
@@ -43,6 +43,7 @@ min_clean_size = 5
 close_radius = 3
 min_watershed_dist = 15
 dapi_watershed = 7
+dapi_hopx_watershed = 8
 spc_watershed = 15
 spc_cleansize = 1
 sigma = 0.5
@@ -141,6 +142,58 @@ if toprocess == "rfp":
       flnmtmp = '/' + id_nm + '_' + 'sec_' + str(section) + '_count_output.xlsx'
       alldat.to_excel(savedir + '/out_sep/' + flnmtmp, index=False)
   
+elif toprocess == "spc":
+    # os.makedirs(savedir + "/sections/", exist_ok=True)
+    # os.makedirs(savedir + "/out_sep/", exist_ok=True)
+    # os.makedirs(savedir + "/spc/", exist_ok=True)
+    # os.makedirs(savedir + "/tdt/", exist_ok=True)
+    # os.makedirs(savedir + "/dapi/", exist_ok=True)
+    # os.makedirs(savedir + "/full/", exist_ok=True)
+    
+    dapi_fl = [fl for fl in fls if "dapi" in fl.lower() and all(x.lower() not in fl.lower() for x in ['spc', 'tdt', 'merging', 'merged'])]
+    spc_fl = [fl for fl in fls if "spc" in fl.lower() and all(x.lower() not in fl.lower() for x in ['dapi', 'tdt', 'rosa', 'merging', 'merged'])]
+    tdt_fl = [fl for fl in fls if "rosa" in fl.lower() and all(x.lower() not in fl.lower() for x in ['dapi', 'merging', 'merged'])]
+    full_fl = [fl for fl in fls if "merg" in fl.lower()]
+    
+    print("DAPI: " + str(dapi_fl))
+    print("spc: " + str(spc_fl))
+    print("tdt: " + str(tdt_fl))
+    print("full: " + str(full_fl))
+    
+    dapi_img = process_file(dapi_fl)
+    spc_img = process_file(spc_fl)
+    tdt_img = process_file(tdt_fl)
+    full_img = process_file(full_fl)
+    
+    # section_dat = pd.DataFrame()
+    # for i in range(0, len(spc_img_split)):
+    #     print("Processing section " + str(i))
+    #     dapi_sec = dapi_img_split[i]
+    #     spc_sec = spc_img_split[i]
+    #     tdt_sec = tdt_img_split[i]
+    #     full_sec = full_img_split[i]
+    
+        # section = i+1
+    try:
+        spc_out = count.main(spc_img=spc_img, tdt_img=tdt_img, dapi_img=dapi_img, to_process="spc",
+                            min_clean_size=min_clean_size, close_radius=close_radius, spc_watershed=spc_watershed, spc_sigma=spc_sigma,
+                            min_watershed_dist=min_watershed_dist, dapi_watershed=dapi_watershed, spc_dilate=spc_dilate, spc_cleansize=spc_cleansize, sigma=sigma,
+                            dapi_colocalize=True,
+                            plot=True, savedir=savedir, section=None, font=font)
+    except ValueError as e:
+        print(e)
+        # continue
+    alldat = spc_out
+    # alldat['section'] = i + 1
+    # section_dat = pd.concat([section_dat, alldat], ignore_index=True)
+    # save sections for reference
+    count.savefig(spc_img, savedir + "spc.png")
+    count.savefig(tdt_img, savedir + "tdt.png")
+    count.savefig(dapi_img, savedir + "dapi.png")
+    count.savefig(full_img, savedir + "full.png")
+    # flnmtmp = '/' + id_nm + '_' + '_count_output.xlsx'
+    # alldat.to_excel(savedir + '/out_sep/' + flnmtmp, index=False)
+
   
 elif toprocess == "lcn2":
   os.makedirs(savedir + "/sections/", exist_ok=True)
@@ -205,13 +258,50 @@ elif toprocess == "lcn2":
       flnmtmp = '/' + id_nm + '_' + 'sec_' + str(section) + '_count_output.xlsx'
       alldat.to_excel(savedir + '/out_sep/' + flnmtmp, index=False)
 
-  
+elif toprocess == "hopx":
+    dapi_fl = [fl for fl in fls if "dapi" in fl.lower() and all(x.lower() not in fl.lower() for x in ['spc', 'tdt', 'merging', 'merged'])]
+    spc_fl = [fl for fl in fls if "spc" in fl.lower() and all(x.lower() not in fl.lower() for x in ['dapi', 'tdt', 'rosa', 'merging', 'merged'])]
+    tdt_fl = [fl for fl in fls if "rosa" in fl.lower() and all(x.lower() not in fl.lower() for x in ['dapi', 'merging', 'merged'])]
+    hopx_fl = [fl for fl in fls if "hopx" in fl.lower() and all(x.lower() not in fl.lower() for x in ['dapi', 'tdt', 'spc', 'merging', 'merged'])]
+    full_fl = [fl for fl in fls if "merg" in fl.lower()]
+    print("DAPI: " + str(dapi_fl))
+    print("spc: " + str(spc_fl))
+    print("tdt: " + str(tdt_fl))
+    print("hopx: " + str(hopx_fl))
+    print("full: " + str(full_fl))
+    
+    dapi_img = process_file(dapi_fl)
+    spc_img = process_file(spc_fl)
+    tdt_img = process_file(tdt_fl)
+    hopx_img = process_file(hopx_fl)
+    full_img = process_file(full_fl)
+    try:
+        hopx_out = count.main(spc_img=spc_img, tdt_img=tdt_img, dapi_img=dapi_img, hopx_img=hopx_img, to_process="hopx",
+                            min_clean_size=min_clean_size, close_radius=close_radius, spc_watershed=spc_watershed, spc_sigma=spc_sigma, dapi_hopx_watershed=dapi_hopx_watershed,
+                            min_watershed_dist=min_watershed_dist, dapi_watershed=dapi_watershed, spc_dilate=spc_dilate, spc_cleansize=spc_cleansize, sigma=sigma,
+                            dapi_colocalize=True,
+                            plot=True, savedir=savedir, section=None, font=font)
+    except ValueError as e:
+        print(e)
+
+    alldat = hopx_out
+    count.savefig(spc_img, savedir + "spc.png")
+    count.savefig(tdt_img, savedir + "tdt.png")
+    count.savefig(dapi_img, savedir + "dapi.png")
+    count.savefig(hopx_img, savedir + "hopx.png")
+    count.savefig(full_img, savedir + "full.png")
+
+
+
 else:
-  raise ValueError("Invalid 'toprocess' argument")
+  raise ValueError(f"Invalid 'toprocess' argument: {toprocess}")
 
 
 ## put image section number as first column and save table
-secnum = section_dat.pop('section')
-section_dat.insert(0, 'section', secnum)
+# secnum = section_dat.pop('section')
+# section_dat.insert(0, 'section', secnum)
 # save section data
-section_dat.to_excel(savedir + flnm, index=False)
+#section_dat.to_excel(savedir + flnm, index=False)
+
+alldat.to_excel(savedir + flnm, index=False)
+
