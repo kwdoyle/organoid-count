@@ -351,12 +351,15 @@ elif toprocess == "rage":
     full_img = process_file(full_fl)
     if len(spc_fl) > 0:
         spc_img = process_file(spc_fl)
+    else:
+        spc_img = None
     
     try:
         rage_out = count.main(rage_img=rage_img, tdt_img=tdt_img, spc_img=spc_img, dapi_img=dapi_img, to_process="rage",
                             min_clean_size=min_clean_size, close_radius=close_radius,
                             min_watershed_dist=min_watershed_dist, dapi_watershed=dapi_watershed,
                             sigma=sigma,
+                            spc_watershed=spc_watershed, spc_sigma=spc_sigma, spc_cleansize=spc_cleansize, spc_dilate=spc_dilate,
                             dapi_colocalize=dapi_colocalize,
                             plot=True, savedir=savedir, section=None, font=font)
     except ValueError as e:
