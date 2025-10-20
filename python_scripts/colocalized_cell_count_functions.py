@@ -374,7 +374,7 @@ def erdr1(erdr1_msk, tdt_msk, rfp670_msk, dapi_msk, plot, savedir, sigma, spc_si
     return outdf
 
 
-def hopx(hopx_msk, dapi_msk, tdt_msk, spc_msk, plot, savedir, sigma, close_radius, min_clean_size, spc_cleansize, single_watershed, dapi_watershed, dapi_hopx_watershed, 
+def hopx(hopx_msk, dapi_msk, tdt_msk, spc_msk, rab_msk, plot, savedir, sigma, close_radius, min_clean_size, spc_cleansize, single_watershed, dapi_watershed, dapi_hopx_watershed, 
          spc_watershed, spc_dilate, spc_sigma, dapi_sigma, hopx_spc_clean, hopx_tdt_clean, dapi_colocalize=False, font=0.005, section=None):  # spc_close=3
     ## this should give counts of raw hopx cells, hopx on dapi cells, hopix/dapi on tdt, hopix/dapi on tdt minus spc
     ## and give intersection coefs for each pair
@@ -408,214 +408,294 @@ def hopx(hopx_msk, dapi_msk, tdt_msk, spc_msk, plot, savedir, sigma, close_radiu
     n_hopx_dapi = make_watershed(msk=hopx_dapi_msk, min_dist=dapi_hopx_watershed, plot=plot, plt_title=title, savedir=savedir, font=font, interactive=False).max()
 
 
-    print("Processing tdt & spc")
-    tdt_msk_clean, spc_msk2, n_tdt, n_spc, n_tdt_spc, tdt_spc_msk = tdt(tdt_msk=tdt_msk, spc_msk=spc_msk, plot=plot, savedir=savedir,
-                                                            close_radius=close_radius, min_clean_size=min_clean_size, 
-                                                            single_watershed=single_watershed, spc_watershed=spc_watershed,
-                                                            sigma=sigma, spc_sigma=spc_sigma, spc_dilate=spc_dilate, 
-                                                            spc_cleansize=spc_cleansize, section=section, font=font, run_externally=False)
-    # hopx/dapi and tdt overlap
-    if dapi_colocalize:
-        hopx_tdt_msk = make_colocalized_mask(img1=hopx_dapi_msk, img2=tdt_msk_clean)
+    if tdt_msk is not None and spc_msk is not None:
+        print("Processing tdt & spc")
+        tdt_msk_clean, spc_msk2, n_tdt, n_spc, n_tdt_spc, tdt_spc_msk = tdt(tdt_msk=tdt_msk, spc_msk=spc_msk, plot=plot, savedir=savedir,
+                                                                close_radius=close_radius, min_clean_size=min_clean_size, 
+                                                                single_watershed=single_watershed, spc_watershed=spc_watershed,
+                                                                sigma=sigma, spc_sigma=spc_sigma, spc_dilate=spc_dilate, 
+                                                                spc_cleansize=spc_cleansize, section=section, font=font, run_externally=False)
+        # hopx/dapi and tdt overlap
+        if dapi_colocalize:
+            hopx_tdt_msk = make_colocalized_mask(img1=hopx_dapi_msk, img2=tdt_msk_clean)
+        else:
+            hopx_tdt_msk = make_colocalized_mask(img1=hopx_msk_clean, img2=tdt_msk_clean)
+        # if I need to close after subtracting spc, I will need to close here as well
+        # in case some almost-connected spot here remains the same after the subtraction,
+        # the closing after subtracting will now count it as one when it should still be two.
+        # note: the watershed distance might make this moot anyway
+        hopx_tdt_closed = blur_mask(morphology.isotropic_closing(hopx_tdt_msk, radius=close_radius), sigma=sigma)
+        if section is not None:
+            title = "hopx_tdt_colocalized_" + str(section)
+        else:
+            title = "hopx_tdt_colocalized"
+
+        n_hopx_tdt = make_watershed(msk=hopx_tdt_closed, min_dist=single_watershed, plot=plot, plt_title=title, savedir=savedir, font=font, interactive=False).max()
+
+        # hopx and tdt minus spc:
+        print("Processing tdt - spc")
+        hopx_tdt_minus_spc = np.subtract(np.array(hopx_tdt_closed, dtype="int16"), np.array(spc_msk2, dtype="int16"))
+        # del hopx_tdt_closed_clean
+        hopx_tdt_minus_spc[np.where(hopx_tdt_minus_spc < 0)] = 0 
+        hopx_tdt_minus_spc = clean_mask(hopx_tdt_minus_spc, minsize=hopx_tdt_clean)
+
+        # some other subtractions
+        if dapi_colocalize:
+            hopx_dapi_minus_spc = np.subtract(np.array(hopx_dapi_msk, dtype="int16"), np.array(spc_msk2, dtype="int16"))
+        else:
+            hopx_dapi_minus_spc = np.subtract(np.array(hopx_msk_clean, dtype="int16"), np.array(spc_msk2, dtype="int16"))
+        hopx_dapi_minus_spc[np.where(hopx_dapi_minus_spc < 0)] = 0 
+        hopx_dapi_minus_spc = clean_mask(hopx_dapi_minus_spc, minsize=hopx_spc_clean)
+
+        # close and clean
+        # still close after subtracting
+        hopx_tdt_minus_spc_closed = blur_mask(morphology.isotropic_closing(hopx_tdt_minus_spc, radius=close_radius), sigma=sigma)
+        hopx_dapi_minus_spc_closed = blur_mask(morphology.isotropic_closing(hopx_dapi_minus_spc, radius=close_radius), sigma=sigma)
+        # hopx_tdt_minus_spc_closed_clean = clean_mask(hopx_tdt_minus_spc_closed, minsize=min_clean_size)
+        # del hopx_tdt_minus_spc_closed, hopx_tdt_minus_spc
+        if section is not None:
+            title = "hopx_tdt_colocalized_minus_spc_" + str(section)
+        else:
+            title = "hopx_tdt_colocalized_minus_spc"
+        # hopx_tdt_minus_spc_closed_watershed_labels = make_watershed(msk=hopx_tdt_minus_spc_closed, min_dist=min_watershed_dist, plot=plot, plt_title=title, savedir=savedir, interactive=False)
+        # n_hopx_tdt_minus_spc = hopx_tdt_minus_spc_closed_watershed_labels.max()
+        n_hopx_tdt_minus_spc = make_watershed(msk=hopx_tdt_minus_spc_closed, min_dist=single_watershed, plot=plot, plt_title=title, savedir=savedir, font=font, interactive=False).max()
+        # n_hopx_tdt_minus_spc = hopx_tdt_minus_spc_closed_watershed_labels.max()
+        # del hopx_tdt_minus_spc_closed_watershed_labels
+
+        if section is not None:
+            title = "hopx_dapi_colocalized_minus_spc_" + str(section)
+        else:
+            title = "hopx_dapi_colocalized_minus_spc"
+        # hopx_tdt_minus_spc_closed_watershed_labels = make_watershed(msk=hopx_tdt_minus_spc_closed, min_dist=min_watershed_dist, plot=plot, plt_title=title, savedir=savedir, interactive=False)
+        # n_hopx_tdt_minus_spc = hopx_tdt_minus_spc_closed_watershed_labels.max()
+        n_hopx_dapi_minus_spc = make_watershed(msk=hopx_dapi_minus_spc_closed, min_dist=single_watershed, plot=plot, plt_title=title, savedir=savedir, font=font, interactive=False).max()
+        
+
+        # hopx dapi spc
+        if dapi_colocalize:
+            hopx_spc_msk = make_colocalized_mask(img1=hopx_dapi_msk, img2=spc_msk2)
+        else:
+            hopx_spc_msk = make_colocalized_mask(img1=hopx_msk_clean, img2=spc_msk2)
+        # if I need to close after subtracting spc, I will need to close here as well
+        # in case some almost-connected spot here remains the same after the subtraction,
+        # the closing after subtracting will now count it as one when it should still be two.
+        # note: the watershed distance might make this moot anyway
+        hopx_spc_closed = blur_mask(morphology.isotropic_closing(hopx_spc_msk, radius=close_radius), sigma=sigma)
+        if section is not None:
+            title = "hopx_spc_colocalized_" + str(section)
+        else:
+            title = "hopx_spc_colocalized"
+        # shed = make_watershed(msk=hopx_tdt_closed, min_dist=min_watershed_dist, plot=plot, plt_title=title, savedir=savedir, interactive=False)
+        # n_hopx_tdt = shed.max()
+        n_hopx_spc = make_watershed(msk=hopx_spc_closed, min_dist=single_watershed, plot=plot, plt_title=title, savedir=savedir, font=font, interactive=False).max()
+
+        # hopx dapi tdt spc
+        # use initial masks before closing and cleaning them--then close and clean this resulting mask
+        hopx_tdt_spc_msk = make_colocalized_mask(img1=hopx_tdt_msk, img2=spc_msk2)
+        # if I need to close after subtracting spc, I will need to close here as well
+        # in case some almost-connected spot here remains the same after the subtraction,
+        # the closing after subtracting will now count it as one when it should still be two.
+        # note: the watershed distance might make this moot anyway
+        hopx_tdt_spc_closed = blur_mask(morphology.isotropic_closing(hopx_tdt_spc_msk, radius=close_radius), sigma=sigma)
+        if section is not None:
+            title = "hopx_tdt_spc_colocalized_" + str(section)
+        else:
+            title = "hopx_tdt_spc_colocalized"
+        # shed = make_watershed(msk=hopx_tdt_closed, min_dist=min_watershed_dist, plot=plot, plt_title=title, savedir=savedir, interactive=False)
+        # n_hopx_tdt = shed.max()
+        n_hopx_tdt_spc = make_watershed(msk=hopx_tdt_spc_closed, min_dist=single_watershed, plot=plot, plt_title=title, savedir=savedir, font=font, interactive=False).max()
+
     else:
-        hopx_tdt_msk = make_colocalized_mask(img1=hopx_msk_clean, img2=tdt_msk_clean)
-    # if I need to close after subtracting spc, I will need to close here as well
-    # in case some almost-connected spot here remains the same after the subtraction,
-    # the closing after subtracting will now count it as one when it should still be two.
-    # note: the watershed distance might make this moot anyway
-    hopx_tdt_closed = blur_mask(morphology.isotropic_closing(hopx_tdt_msk, radius=close_radius), sigma=sigma)
-    if section is not None:
-        title = "hopx_tdt_colocalized_" + str(section)
+        n_tdt = 0
+        n_spc = 0
+        n_tdt_spc = 0
+        n_hopx_tdt = 0
+        n_hopx_tdt_minus_spc = 0
+        n_hopx_dapi_minus_spc = 0
+        n_hopx_spc = 0
+        n_hopx_tdt_spc = 0
+
+    if rab_msk is not None:
+        print("Processing hopx & rab")
+        hopx_rab_msk = make_colocalized_mask(img1=hopx_msk_clean, img2=rab_msk) # TODO should use hopx + dapi mask?
+        hopx_rab_closed = blur_mask(morphology.isotropic_closing(hopx_rab_msk, radius=close_radius), sigma=sigma)
+        if section is not None:
+            title = "hopx_rab_colocalized_" + str(section)
+        else:
+            title = "hopx_rab_colocalized"
+        n_hopx_rab = make_watershed(msk=hopx_rab_closed, min_dist=single_watershed, plot=plot, plt_title=title, savedir=savedir, font=font, interactive=False).max()
     else:
-        title = "hopx_tdt_colocalized"
-
-    n_hopx_tdt = make_watershed(msk=hopx_tdt_closed, min_dist=single_watershed, plot=plot, plt_title=title, savedir=savedir, font=font, interactive=False).max()
-
-    # hopx and tdt minus spc:
-    print("Processing tdt - spc")
-    hopx_tdt_minus_spc = np.subtract(np.array(hopx_tdt_closed, dtype="int16"), np.array(spc_msk2, dtype="int16"))
-    # del hopx_tdt_closed_clean
-    hopx_tdt_minus_spc[np.where(hopx_tdt_minus_spc < 0)] = 0 
-    hopx_tdt_minus_spc = clean_mask(hopx_tdt_minus_spc, minsize=hopx_tdt_clean)
-
-    # some other subtractions
-    if dapi_colocalize:
-        hopx_dapi_minus_spc = np.subtract(np.array(hopx_dapi_msk, dtype="int16"), np.array(spc_msk2, dtype="int16"))
-    else:
-        hopx_dapi_minus_spc = np.subtract(np.array(hopx_msk_clean, dtype="int16"), np.array(spc_msk2, dtype="int16"))
-    hopx_dapi_minus_spc[np.where(hopx_dapi_minus_spc < 0)] = 0 
-    hopx_dapi_minus_spc = clean_mask(hopx_dapi_minus_spc, minsize=hopx_spc_clean)
-
-    # close and clean
-    # still close after subtracting
-    hopx_tdt_minus_spc_closed = blur_mask(morphology.isotropic_closing(hopx_tdt_minus_spc, radius=close_radius), sigma=sigma)
-    hopx_dapi_minus_spc_closed = blur_mask(morphology.isotropic_closing(hopx_dapi_minus_spc, radius=close_radius), sigma=sigma)
-    # hopx_tdt_minus_spc_closed_clean = clean_mask(hopx_tdt_minus_spc_closed, minsize=min_clean_size)
-    # del hopx_tdt_minus_spc_closed, hopx_tdt_minus_spc
-    if section is not None:
-        title = "hopx_tdt_colocalized_minus_spc_" + str(section)
-    else:
-        title = "hopx_tdt_colocalized_minus_spc"
-    # hopx_tdt_minus_spc_closed_watershed_labels = make_watershed(msk=hopx_tdt_minus_spc_closed, min_dist=min_watershed_dist, plot=plot, plt_title=title, savedir=savedir, interactive=False)
-    # n_hopx_tdt_minus_spc = hopx_tdt_minus_spc_closed_watershed_labels.max()
-    n_hopx_tdt_minus_spc = make_watershed(msk=hopx_tdt_minus_spc_closed, min_dist=single_watershed, plot=plot, plt_title=title, savedir=savedir, font=font, interactive=False).max()
-    # n_hopx_tdt_minus_spc = hopx_tdt_minus_spc_closed_watershed_labels.max()
-    # del hopx_tdt_minus_spc_closed_watershed_labels
-
-    if section is not None:
-        title = "hopx_dapi_colocalized_minus_spc_" + str(section)
-    else:
-        title = "hopx_dapi_colocalized_minus_spc"
-    # hopx_tdt_minus_spc_closed_watershed_labels = make_watershed(msk=hopx_tdt_minus_spc_closed, min_dist=min_watershed_dist, plot=plot, plt_title=title, savedir=savedir, interactive=False)
-    # n_hopx_tdt_minus_spc = hopx_tdt_minus_spc_closed_watershed_labels.max()
-    n_hopx_dapi_minus_spc = make_watershed(msk=hopx_dapi_minus_spc_closed, min_dist=single_watershed, plot=plot, plt_title=title, savedir=savedir, font=font, interactive=False).max()
-    
-
-    # hopx dapi spc
-    if dapi_colocalize:
-        hopx_spc_msk = make_colocalized_mask(img1=hopx_dapi_msk, img2=spc_msk2)
-    else:
-        hopx_spc_msk = make_colocalized_mask(img1=hopx_msk_clean, img2=spc_msk2)
-    # if I need to close after subtracting spc, I will need to close here as well
-    # in case some almost-connected spot here remains the same after the subtraction,
-    # the closing after subtracting will now count it as one when it should still be two.
-    # note: the watershed distance might make this moot anyway
-    hopx_spc_closed = blur_mask(morphology.isotropic_closing(hopx_spc_msk, radius=close_radius), sigma=sigma)
-    if section is not None:
-        title = "hopx_spc_colocalized_" + str(section)
-    else:
-        title = "hopx_spc_colocalized"
-    # shed = make_watershed(msk=hopx_tdt_closed, min_dist=min_watershed_dist, plot=plot, plt_title=title, savedir=savedir, interactive=False)
-    # n_hopx_tdt = shed.max()
-    n_hopx_spc = make_watershed(msk=hopx_spc_closed, min_dist=single_watershed, plot=plot, plt_title=title, savedir=savedir, font=font, interactive=False).max()
-
-
-
-    # hopx dapi tdt spc
-    # use initial masks before closing and cleaning them--then close and clean this resulting mask
-    hopx_tdt_spc_msk = make_colocalized_mask(img1=hopx_tdt_msk, img2=spc_msk2)
-    # if I need to close after subtracting spc, I will need to close here as well
-    # in case some almost-connected spot here remains the same after the subtraction,
-    # the closing after subtracting will now count it as one when it should still be two.
-    # note: the watershed distance might make this moot anyway
-    hopx_tdt_spc_closed = blur_mask(morphology.isotropic_closing(hopx_tdt_spc_msk, radius=close_radius), sigma=sigma)
-    if section is not None:
-        title = "hopx_tdt_spc_colocalized_" + str(section)
-    else:
-        title = "hopx_tdt_spc_colocalized"
-    # shed = make_watershed(msk=hopx_tdt_closed, min_dist=min_watershed_dist, plot=plot, plt_title=title, savedir=savedir, interactive=False)
-    # n_hopx_tdt = shed.max()
-    n_hopx_tdt_spc = make_watershed(msk=hopx_tdt_spc_closed, min_dist=single_watershed, plot=plot, plt_title=title, savedir=savedir, font=font, interactive=False).max()
+        n_hopx_rab = 0
 
     # make df
-    # outdf = pd.DataFrame([{"n_dapi": n_dapi, "n_hopx": n_hopx, "n_hopx_dapi": n_hopx_dapi, "n_hopx_dapi_tdt": n_hopx_tdt, "n_spc_from_hopx_func": n_spc, 
-    #                        "n_hopx_dapi_tdt_minus_spc": n_hopx_tdt_minus_spc, "n_hopx_dapi_minus_spc": n_hopx_dapi_minus_spc,
-    #                         "pcnt_dapi_express_hopx": dapi_express_hopx_pcnt, "pcnt_hopx_express_dapi": hopx_express_dapi_pcnt,
-    #                            "pcnt_hopx_dapi_express_tdt": hopx_dapi_express_tdt_pcnt}])
-
     outdf = pd.DataFrame([{"n_dapi": n_dapi, "n_hopx": n_hopx, "n_spc": n_spc, "n_tdt": n_tdt, "n_tdt_spc": n_tdt_spc, "n_hopx_dapi": n_hopx_dapi, "n_hopx_dapi_tdt": n_hopx_tdt,
                            "n_hopx_dapi_tdt_spc": n_hopx_tdt_spc, "n_hopx_dapi_spc": n_hopx_spc, "n_hopx_dapi_tdt_minus_spc": n_hopx_tdt_minus_spc,
-                           "n_hopx_dapi_minus_spc": n_hopx_dapi_minus_spc}])
+                           "n_hopx_dapi_minus_spc": n_hopx_dapi_minus_spc, "n_hopx_rab": n_hopx_rab}])
 
     return outdf
 
 
-def aqp5(aqp5_msk, dapi_msk, tdt_msk, plot, savedir, sigma, aqp5_sigma, single_watershed, dapi_watershed, close_radius, min_clean_size, section, font):
+def aqp5(aqp5_msk, dapi_msk, tdt_msk, spc_msk, plot, savedir, sigma, aqp5_sigma, single_watershed, dapi_watershed, dapi_aqp5_watershed, aqp5_spc_clean, aqp5_tdt_clean, 
+         spc_watershed, spc_sigma, spc_cleansize, spc_dilate, close_radius, min_clean_size, dapi_colocalize=False, section=None, font=0.005):
     ## new way, not counting per cell, but finding overall percentage of aqp5 area over other area
 
-    # # first create cleaned dapi mask
-    # print("processing dapi")
-    # n_dapi, dapi_msk_clean = dapi(dapi_msk=dapi_msk, plot=plot, savedir=savedir, sigma=sigma, font=font,
-    #                               min_watershed_dist=dapi_watershed, min_clean_size=min_clean_size, section=section)
+    # first create cleaned dapi mask
+    print("processing dapi")
+    n_dapi, dapi_msk_clean = dapi(dapi_msk=dapi_msk, plot=plot, savedir=savedir, sigma=sigma, font=font,
+                                  min_watershed_dist=dapi_watershed, min_clean_size=min_clean_size, section=section)
 
-    # print("processing aqp5")
-    # aqp5_msk_clean = blur_mask(clean_mask(aqp5_msk, minsize=min_clean_size), sigma=aqp5_sigma)
+    print("processing aqp5")
+    aqp5_msk_clean = blur_mask(clean_mask(aqp5_msk, minsize=min_clean_size), sigma=aqp5_sigma)
 
     if section is not None:
-        title = "aqp5_dapi_" + str(section)
+        title = "aqp5_" + str(section)
     else:
-        title = "aqp5_dapi"
-    # n_aqp5 = make_watershed(msk=aqp5_msk_clean, min_dist=single_watershed, plot=plot, plt_title=title, savedir=savedir, font=font).max()
+        title = "aqp5"
+    n_aqp5 = make_watershed(msk=aqp5_msk_clean, min_dist=single_watershed, plot=plot, plt_title=title, savedir=savedir, font=font).max()
 
     print("Processing aqp5 & dapi")
-    # aqp5_dapi_msk = make_colocalized_mask(img1=aqp5_msk_clean, img2=dapi_msk_clean)
-    aqp5_dapi_msk = make_colocalized_mask(img1=aqp5_msk, img2=dapi_msk)
-
-    fig, ax = plt.subplots(figsize=(9.60, 5.40))  # Adjust the size as needed
-    ax.imshow(aqp5_dapi_msk, cmap=plt.cm.gray)  # Display the mask
-    fig.tight_layout()
-    # fig.suptitle(plt_title + ' n cells: ' + str(labels.max()))
-    plt.savefig(savedir + '/' + title + '.png', dpi=1200)
-    fig.clf()
-    plt.close('all')
-    gc.collect()
-
-    # aqp5_dapi_msk_blur = blur_mask(aqp5_dapi_msk, sigma=aqp5_sigma)
-
-    # if section is not None:
-    #     title = "aqp5_dapi_colocalized_" + str(section)
-    # else:
-    #     title = "aqp5_dapi_colocalized"
-    # # note: logically, watershed distance here should be the same as the dapi watershed distance
-    # n_aqp5_dapi = make_watershed(msk=aqp5_dapi_msk_blur, min_dist=dapi_watershed, plot=plot, plt_title=title, savedir=savedir, font=font, interactive=False).max()
-
-    # # tdt
-    # print("processing tdt")
-    # tdt_msk_clean, n_tdt = tdt(tdt_msk=tdt_msk, plot=plot, savedir=savedir,
-    #                             close_radius=close_radius, min_clean_size=min_clean_size, 
-    #                             single_watershed=single_watershed,
-    #                             sigma=sigma, 
-    #                             section=section, font=font, run_externally=False,
-    #                             run_spc=False)
-
-    # print("Processing aqp5 & tdt")
-    aqp5_tdt_msk = blur_mask(make_colocalized_mask(img1=aqp5_msk, img2=tdt_msk), sigma=sigma)
+    aqp5_dapi_msk = blur_mask(make_colocalized_mask(img1=aqp5_msk_clean, img2=dapi_msk_clean), sigma=sigma)
     if section is not None:
-        title = "aqp5_tdt_" + str(section)
+        title = "aqp5_dapi_colocalized_" + str(section)
     else:
-        title = "aqp5_tdt"
-    fig, ax = plt.subplots(figsize=(9.60, 5.40))  # Adjust the size as needed
-    ax.imshow(aqp5_tdt_msk, cmap=plt.cm.gray)  # Display the mask
-    fig.tight_layout()
-    # fig.suptitle(plt_title + ' n cells: ' + str(labels.max()))
-    plt.savefig(savedir + '/' + title + '.png', dpi=1200)
-    fig.clf()
-    plt.close('all')
-    gc.collect()
+        title = "aqp5_dapi_colocalized"
 
-    # if section is not None:
-    #     title = "aqp5_tdt_colocalized_" + str(section)
-    # else:
-    #     title = "aqp5_tdt_colocalized"
-    # # TODO check if should use different watershed.
-    # n_aqp5_tdt = make_watershed(msk=aqp5_tdt_msk, min_dist=single_watershed, plot=plot, plt_title=title, savedir=savedir, font=font, interactive=False).max()
+    n_aqp5_dapi = make_watershed(msk=aqp5_dapi_msk, min_dist=dapi_aqp5_watershed, plot=plot, plt_title=title, savedir=savedir, font=font, interactive=False).max()
+    
+    # if have tdt or spc..
+    if spc_msk is not None or tdt_msk is not None:
+        # process both tdt and spc if both are given
+        if spc_msk is not None and tdt_msk is not None:
+            print("Processing tdt & spc")
+            tdt_msk_clean, spc_msk2, n_tdt, n_spc, n_tdt_spc, tdt_spc_msk = tdt(tdt_msk=tdt_msk, spc_msk=spc_msk, plot=plot, savedir=savedir,
+                                                                    close_radius=close_radius, min_clean_size=min_clean_size, 
+                                                                    single_watershed=single_watershed, spc_watershed=spc_watershed,
+                                                                    sigma=sigma, spc_sigma=spc_sigma, spc_dilate=spc_dilate, 
+                                                                    spc_cleansize=spc_cleansize, section=section, font=font, run_externally=False)
+        # else process only tdt if spc not given
+        elif tdt_msk is not None and spc_msk is None:
+            print("Processing tdt without spc")
+            tdt_msk_clean, n_tdt = tdt(tdt_msk=tdt_msk, run_spc=False, plot=plot, savedir=savedir,
+                                                                    close_radius=close_radius, min_clean_size=min_clean_size, 
+                                                                    single_watershed=single_watershed, 
+                                                                    sigma=sigma, 
+                                                                    section=section, font=font, run_externally=False)
 
+        # TODO put parts of these corresponding to whether spc is given or not
+        # hopx/dapi and tdt overlap
+        if dapi_colocalize:
+            aqp5_tdt_msk = make_colocalized_mask(img1=aqp5_dapi_msk, img2=tdt_msk_clean)
+        else:
+            aqp5_tdt_msk = make_colocalized_mask(img1=aqp5_msk_clean, img2=tdt_msk_clean)
+        # if I need to close after subtracting spc, I will need to close here as well
+        # in case some almost-connected spot here remains the same after the subtraction,
+        # the closing after subtracting will now count it as one when it should still be two.
+        # note: the watershed distance might make this moot anyway
+        aqp5_tdt_closed = blur_mask(morphology.isotropic_closing(aqp5_tdt_msk, radius=close_radius), sigma=sigma)
+        if section is not None:
+            title = "aqp5_tdt_colocalized_" + str(section)
+        else:
+            title = "aqp5_tdt_colocalized"
 
-    # aqp5_express_dapi_prop = intersection_coeff(aqp5_msk_clean, dapi_msk_clean)
-    # aqp5_express_tdt_prop = intersection_coeff(aqp5_msk_clean, tdt_msk_clean)
-    # aqp5_dapi_express_tdt_prop = intersection_coeff(aqp5_dapi_msk_blur, tdt_msk_clean)
+        n_aqp5_tdt = make_watershed(msk=aqp5_tdt_closed, min_dist=single_watershed, plot=plot, plt_title=title, savedir=savedir, font=font, interactive=False).max()
 
-    # dapi_express_aqp5_prop = intersection_coeff(dapi_msk_clean, aqp5_msk_clean)
-    # tdt_express_aqp5_prop = intersection_coeff(tdt_msk_clean, aqp5_msk_clean)
-    # tdt_express_aqp5_dapi_prop = intersection_coeff(tdt_msk_clean, aqp5_dapi_msk_blur)
-    aqp5_msk_bool = aqp5_msk > 0
-    dapi_msk_bool = dapi_msk > 0
-    tdt_msk_bool = tdt_msk > 0
-    aqp5_dapi_msk_bool = aqp5_dapi_msk > 0
+        if spc_msk is not None:
+            # hopx and tdt minus spc:
+            print("Processing tdt - spc")
+            aqp5_tdt_minus_spc = np.subtract(np.array(aqp5_tdt_closed, dtype="int16"), np.array(spc_msk2, dtype="int16"))
+            # del hopx_tdt_closed_clean
+            aqp5_tdt_minus_spc[np.where(aqp5_tdt_minus_spc < 0)] = 0 
+            aqp5_tdt_minus_spc = clean_mask(aqp5_tdt_minus_spc, minsize=aqp5_tdt_clean)
 
-    aqp5_express_dapi_prop = intersection_coeff(aqp5_msk_bool, dapi_msk_bool)
-    aqp5_express_tdt_prop = intersection_coeff(aqp5_msk_bool, tdt_msk_bool)
-    aqp5_dapi_express_tdt_prop = intersection_coeff(aqp5_dapi_msk_bool, tdt_msk_bool)
+            aqp5_tdt_minus_spc_closed = blur_mask(morphology.isotropic_closing(aqp5_tdt_minus_spc, radius=close_radius), sigma=sigma)
+            if section is not None:
+                title = "aqp5_tdt_colocalized_minus_spc_" + str(section)
+            else:
+                title = "aqp5_tdt_colocalized_minus_spc"
+            n_aqp5_tdt_minus_spc = make_watershed(msk=aqp5_tdt_minus_spc_closed, min_dist=single_watershed, plot=plot, plt_title=title, savedir=savedir, font=font, interactive=False).max()
 
-    dapi_express_aqp5_prop = intersection_coeff(dapi_msk_bool, aqp5_msk_bool)
-    tdt_express_aqp5_prop = intersection_coeff(tdt_msk_bool, aqp5_msk_bool)
-    tdt_express_aqp5_dapi_prop = intersection_coeff(tdt_msk_bool, aqp5_dapi_msk_bool)
+            # some other subtractions
+            if dapi_colocalize:
+                aqp5_dapi_minus_spc = np.subtract(np.array(aqp5_dapi_msk, dtype="int16"), np.array(spc_msk2, dtype="int16"))
+            else:
+                aqp5_dapi_minus_spc = np.subtract(np.array(aqp5_msk_clean, dtype="int16"), np.array(spc_msk2, dtype="int16"))
+            aqp5_dapi_minus_spc[np.where(aqp5_dapi_minus_spc < 0)] = 0 
+            aqp5_dapi_minus_spc = clean_mask(aqp5_dapi_minus_spc, minsize=aqp5_spc_clean)
+
+            # close and clean
+            # still close after subtracting
+            aqp5_dapi_minus_spc_closed = blur_mask(morphology.isotropic_closing(aqp5_dapi_minus_spc, radius=close_radius), sigma=sigma)
+            # hopx_tdt_minus_spc_closed_clean = clean_mask(hopx_tdt_minus_spc_closed, minsize=min_clean_size)
+            # del hopx_tdt_minus_spc_closed, hopx_tdt_minus_spc
+
+            # n_hopx_tdt_minus_spc = hopx_tdt_minus_spc_closed_watershed_labels.max()
+            # del hopx_tdt_minus_spc_closed_watershed_labels
+
+            if section is not None:
+                title = "aqp5_dapi_colocalized_minus_spc_" + str(section)
+            else:
+                title = "aqp5_dapi_colocalized_minus_spc"
+            # hopx_tdt_minus_spc_closed_watershed_labels = make_watershed(msk=hopx_tdt_minus_spc_closed, min_dist=min_watershed_dist, plot=plot, plt_title=title, savedir=savedir, interactive=False)
+            # n_hopx_tdt_minus_spc = hopx_tdt_minus_spc_closed_watershed_labels.max()
+            n_aqp5_dapi_minus_spc = make_watershed(msk=aqp5_dapi_minus_spc_closed, min_dist=single_watershed, plot=plot, plt_title=title, savedir=savedir, font=font, interactive=False).max()
+        
+
+            # hopx dapi spc
+            if dapi_colocalize:
+                aqp5_spc_msk = make_colocalized_mask(img1=aqp5_dapi_msk, img2=spc_msk2)
+            else:
+                aqp5_spc_msk = make_colocalized_mask(img1=aqp5_msk_clean, img2=spc_msk2)
+            # if I need to close after subtracting spc, I will need to close here as well
+            # in case some almost-connected spot here remains the same after the subtraction,
+            # the closing after subtracting will now count it as one when it should still be two.
+            # note: the watershed distance might make this moot anyway
+            aqp5_spc_closed = blur_mask(morphology.isotropic_closing(aqp5_spc_msk, radius=close_radius), sigma=sigma)
+            if section is not None:
+                title = "aqp5_spc_colocalized_" + str(section)
+            else:
+                title = "aqp5_spc_colocalized"
+            # shed = make_watershed(msk=hopx_tdt_closed, min_dist=min_watershed_dist, plot=plot, plt_title=title, savedir=savedir, interactive=False)
+            # n_hopx_tdt = shed.max()
+            n_aqp5_spc = make_watershed(msk=aqp5_spc_closed, min_dist=single_watershed, plot=plot, plt_title=title, savedir=savedir, font=font, interactive=False).max()
+
+            # hopx dapi tdt spc
+            # use initial masks before closing and cleaning them--then close and clean this resulting mask
+            aqp5_tdt_spc_msk = make_colocalized_mask(img1=aqp5_tdt_msk, img2=spc_msk2)
+            # if I need to close after subtracting spc, I will need to close here as well
+            # in case some almost-connected spot here remains the same after the subtraction,
+            # the closing after subtracting will now count it as one when it should still be two.
+            # note: the watershed distance might make this moot anyway
+            aqp5_tdt_spc_closed = blur_mask(morphology.isotropic_closing(aqp5_tdt_spc_msk, radius=close_radius), sigma=sigma)
+            if section is not None:
+                title = "aqp5_tdt_spc_colocalized_" + str(section)
+            else:
+                title = "aqp5_tdt_spc_colocalized"
+            n_aqp5_tdt_spc = make_watershed(msk=aqp5_tdt_spc_closed, min_dist=single_watershed, plot=plot, plt_title=title, savedir=savedir, font=font, interactive=False).max()
+
+        else:
+            n_spc = 0
+            n_tdt_spc = 0
+            n_aqp5_tdt_minus_spc = 0
+            n_aqp5_dapi_minus_spc = 0
+            n_aqp5_spc = 0
+            n_aqp5_tdt_spc = 0
+
+    else:
+        n_tdt = 0
+        n_spc = 0
+        n_tdt_spc = 0
+        n_aqp5_tdt = 0
+        n_aqp5_tdt_minus_spc = 0
+        n_aqp5_dapi_minus_spc = 0
+        n_aqp5_spc = 0
+        n_aqp5_tdt_spc = 0
+
 
     # make df
-    outdf = pd.DataFrame([{
-        # "n_aqp5": n_aqp5, "n_dapi": n_dapi, "n_aqp5_dapi": n_aqp5_dapi, "n_tdt": n_tdt, "n_aqp5_tdt": n_aqp5_tdt, 
-                           "prop_aqp5_express_dapi": aqp5_express_dapi_prop, "prop_aqp5_express_tdt": aqp5_express_tdt_prop,"prop_aqp5_dapi_express_tdt": aqp5_dapi_express_tdt_prop,
-                           "prop_dapi_express_aqp5": dapi_express_aqp5_prop, "prop_tdt_express_aqp5": tdt_express_aqp5_prop, "prop_tdt_express_aqp5_dapi": tdt_express_aqp5_dapi_prop}])
+    outdf = pd.DataFrame([{"n_dapi": n_dapi, "n_aqp5": n_aqp5, "n_spc": n_spc, "n_tdt": n_tdt, "n_tdt_spc": n_tdt_spc, "n_aqp5_dapi": n_aqp5_dapi, "n_aqp5_dapi_tdt": n_aqp5_tdt,
+                           "n_aqp5_dapi_tdt_spc": n_aqp5_tdt_spc, "n_aqp5_dapi_spc": n_aqp5_spc, "n_aqp5_dapi_tdt_minus_spc": n_aqp5_tdt_minus_spc,
+                           "n_aqp5_dapi_minus_spc": n_aqp5_dapi_minus_spc}])
 
     return outdf
 
@@ -660,8 +740,8 @@ def threshold_img(img, classes=3):
 
 def main(to_process, savedir,
          close_radius, min_clean_size, min_watershed_dist, dapi_watershed, sigma, spc_watershed=None, spc_sigma=None, spc_dilate=None, spc_cleansize=None,
-         dapi_hopx_watershed=None, erdr1_sigma=None, dapi_colocalize=True,
-         dapi_img=None, hopx_img=None, tdt_img=None, spc_img=None, lcn2_img=None, krt8_img=None, aqp5_img=None, erdr1_img=None, gfp_img=None, rfp670_img=None, 
+         dapi_hopx_watershed=None, dapi_aqp5_watershed=None, erdr1_sigma=None, dapi_colocalize=True, aqp5_sigma=None,
+         dapi_img=None, hopx_img=None, tdt_img=None, spc_img=None, lcn2_img=None, krt8_img=None, aqp5_img=None, erdr1_img=None, gfp_img=None, rfp670_img=None, rab_img=None,
          plot=False, section=None, font=0.005, stopcheck=True):
 
     print("Will analyze " + to_process)
@@ -680,7 +760,7 @@ def main(to_process, savedir,
 
 
     all_imgs = {'dapi': dapi_img, 'hopx': hopx_img, 'tdt': tdt_img, 'spc': spc_img, 'lcn2': lcn2_img, 'krt8': krt8_img,
-                'aqp5': aqp5_img, 'erdr1': erdr1_img, 'gfp': gfp_img, 'rfp670': rfp670_img}
+                'aqp5': aqp5_img, 'erdr1': erdr1_img, 'gfp': gfp_img, 'rfp670': rfp670_img, 'rab': rab_img}
 
     # check if any information in the image. if all blank, exit
     if stopcheck:
@@ -722,12 +802,19 @@ def main(to_process, savedir,
         
     elif to_process == "hopx":
         print("Processing Hopx")
-        out = hopx(hopx_msk=thresh_imgs['hopx'], dapi_msk=thresh_imgs['dapi'], tdt_msk=thresh_imgs['tdt'], spc_msk=thresh_imgs['spc'], plot=plot, savedir=savedir,
+        out = hopx(hopx_msk=thresh_imgs['hopx'], dapi_msk=thresh_imgs['dapi'], tdt_msk=thresh_imgs['tdt'], spc_msk=thresh_imgs['spc'], rab_msk=thresh_imgs['rab'], plot=plot, savedir=savedir,
                          sigma=sigma, close_radius=close_radius, min_clean_size=min_clean_size,
                          spc_cleansize=spc_cleansize, single_watershed=min_watershed_dist, dapi_watershed=dapi_watershed,
                          dapi_hopx_watershed=dapi_hopx_watershed, spc_watershed=spc_watershed, spc_dilate=spc_dilate, spc_sigma=spc_sigma,
                          dapi_sigma=sigma, hopx_spc_clean=min_clean_size, hopx_tdt_clean=min_clean_size,
                          section=section, font=font, dapi_colocalize=dapi_colocalize)
+    elif to_process == "aqp5":
+        print("Processing Aqp5")
+        out = aqp5(aqp5_msk=thresh_imgs['aqp5'], dapi_msk=thresh_imgs['dapi'], tdt_msk=thresh_imgs['tdt'], spc_msk=thresh_imgs['spc'], plot=plot, savedir=savedir,
+                         sigma=sigma, aqp5_sigma=aqp5_sigma, single_watershed=min_watershed_dist, dapi_watershed=dapi_watershed, dapi_aqp5_watershed=dapi_aqp5_watershed,
+                         spc_watershed=spc_watershed, spc_sigma=spc_sigma, spc_cleansize=spc_cleansize, spc_dilate=spc_dilate,
+                         close_radius=close_radius, min_clean_size=min_clean_size, aqp5_spc_clean=min_clean_size, aqp5_tdt_clean=min_clean_size, dapi_colocalize=dapi_colocalize,
+                         section=section, font=font)
 
     else:
         raise ValueError("'to_process' must be 'tdt' 'lcn2', or 'erdr1'")

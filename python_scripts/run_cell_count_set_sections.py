@@ -4,6 +4,7 @@ import pandas as pd
 import skimage.io as io
 import colocalized_cell_count_functions as count
 
+# TODO add RAGE to this, and the hopx with Rab (whatever that is)
 
 def subset_img(img):
     y_step = img.shape[0] // 9 
@@ -44,22 +45,24 @@ close_radius = 3
 min_watershed_dist = 15
 dapi_watershed = 7
 dapi_hopx_watershed = 8
+dapi_aqp5_watershed = 8
 spc_watershed = 15
 spc_cleansize = 1
 sigma = 0.5
 spc_sigma = 0.2
-erdr1_sigma = 0.2
+aqp5_sigma = 0.5
 spc_dilate = 10
 font = 15
+dapi_colocalize = True
 
 
 # pull out the ID (the last folder name in the basedir argument) and use it in the output file name
 id_nm = os.path.normpath(basedir).split(os.sep)[-1]
 flnm = '/' + id_nm + '_' + 'count_output.xlsx'
 
-if os.path.exists(savedir + flnm):
-    print("File already analyzed")
-    sys.exit()
+# if os.path.exists(savedir + flnm):
+#     print("File already analyzed")
+#     sys.exit()
     
 fls = os.listdir(basedir)
 
@@ -173,8 +176,6 @@ elif toprocess == "spc":
     count.savefig(dapi_img, savedir + "dapi.png")
     count.savefig(full_img, savedir + "full.png")
 
-
-  
 elif toprocess == "lcn2":
   os.makedirs(savedir + "/sections/", exist_ok=True)
   os.makedirs(savedir + "/out_sep/", exist_ok=True)
@@ -242,36 +243,132 @@ elif toprocess == "hopx":
     dapi_fl = [fl for fl in fls if "dapi" in fl.lower() and all(x.lower() not in fl.lower() for x in ['spc', 'tdt', 'merging', 'merged'])]
     spc_fl = [fl for fl in fls if "spc" in fl.lower() and all(x.lower() not in fl.lower() for x in ['dapi', 'tdt', 'rosa', 'merging', 'merged'])]
     tdt_fl = [fl for fl in fls if "rosa" in fl.lower() and all(x.lower() not in fl.lower() for x in ['dapi', 'merging', 'merged'])]
-    hopx_fl = [fl for fl in fls if "hopx" in fl.lower() and all(x.lower() not in fl.lower() for x in ['dapi', 'tdt', 'spc', 'merging', 'merged'])]
+    hopx_fl = [fl for fl in fls if "hopx" in fl.lower() and all(x.lower() not in fl.lower() for x in ['dapi', 'tdt', 'spc', 'merging', 'merged', 'rab'])]
+    rab_fl = [fl for fl in fls if "rab" in fl.lower() and all(x.lower() not in fl.lower() for x in ['dapi', 'tdt', 'spc', 'merging', 'merged'])]
     full_fl = [fl for fl in fls if "merg" in fl.lower()]
     print("DAPI: " + str(dapi_fl))
     print("spc: " + str(spc_fl))
     print("tdt: " + str(tdt_fl))
     print("hopx: " + str(hopx_fl))
+    print("rab: " + str(rab_fl))
     print("full: " + str(full_fl))
     
     dapi_img = process_file(dapi_fl)
-    spc_img = process_file(spc_fl)
-    tdt_img = process_file(tdt_fl)
     hopx_img = process_file(hopx_fl)
     full_img = process_file(full_fl)
+
+    if len(spc_fl) > 0:
+        spc_img = process_file(spc_fl)
+    else:
+        spc_img = None
+    if len(tdt_fl) > 0:
+        tdt_img = process_file(tdt_fl)
+    else:
+        tdt_img = None
+    if len(rab_fl) > 0:
+        rab_img = process_file(rab_fl)
+    else:
+        rab_img = None
     try:
-        hopx_out = count.main(spc_img=spc_img, tdt_img=tdt_img, dapi_img=dapi_img, hopx_img=hopx_img, to_process="hopx",
+        hopx_out = count.main(spc_img=spc_img, tdt_img=tdt_img, dapi_img=dapi_img, hopx_img=hopx_img, rab_img=rab_img, to_process="hopx",
                             min_clean_size=min_clean_size, close_radius=close_radius, spc_watershed=spc_watershed, spc_sigma=spc_sigma, dapi_hopx_watershed=dapi_hopx_watershed,
                             min_watershed_dist=min_watershed_dist, dapi_watershed=dapi_watershed, spc_dilate=spc_dilate, spc_cleansize=spc_cleansize, sigma=sigma,
-                            dapi_colocalize=True,
+                            dapi_colocalize=dapi_colocalize,
                             plot=True, savedir=savedir, section=None, font=font)
     except ValueError as e:
         print(e)
 
     alldat = hopx_out
-    count.savefig(spc_img, savedir + "spc.png")
-    count.savefig(tdt_img, savedir + "tdt.png")
     count.savefig(dapi_img, savedir + "dapi.png")
     count.savefig(hopx_img, savedir + "hopx.png")
     count.savefig(full_img, savedir + "full.png")
+    if len(spc_fl) > 0:
+        count.savefig(spc_img, savedir + "spc.png")
+    if len(tdt_fl) > 0:
+        count.savefig(tdt_img, savedir + "tdt.png")
+    if len(rab_fl) > 0:
+        count.savefig(rab_img, savedir + "rab.png")
 
+elif toprocess == "aqp5":
+    dapi_fl = [fl for fl in fls if "dapi" in fl.lower() and all(x.lower() not in fl.lower() for x in ['tdt', 'aqp5', 'merging', 'merged'])]
+    aqp5_fl = [fl for fl in fls if "aqp5" in fl.lower() and all(x.lower() not in fl.lower() for x in ['dapi', 'tdt', 'merging', 'merged'])]
+    tdt_fl = [fl for fl in fls if "rosa" in fl.lower() and all(x.lower() not in fl.lower() for x in ['dapi', 'aqp5', 'merging', 'merged'])]
+    spc_fl = [fl for fl in fls if "spc" in fl.lower() and all(x.lower() not in fl.lower() for x in ['dapi', 'tdt', 'rosa', 'merging', 'merged'])]
+    full_fl = [fl for fl in fls if "merg" in fl.lower()]
+    
+    print("DAPI: " + str(dapi_fl))
+    print("Aqp5: " + str(aqp5_fl))
+    print("tdt: " + str(tdt_fl))
+    print("spc: " + str(spc_fl))
+    print("full: " + str(full_fl))
+    
+    dapi_img = process_file(dapi_fl)
+    aqp5_img = process_file(aqp5_fl)
+    tdt_img = process_file(tdt_fl)
+    full_img = process_file(full_fl)
+    if len(spc_fl) > 0:
+        spc_img = process_file(spc_fl)
+    else:
+        spc_img = None
+    
+    try:
+        aqp5_out = count.main(aqp5_img=aqp5_img, tdt_img=tdt_img, spc_img=spc_img, dapi_img=dapi_img, to_process="aqp5",
+                            min_clean_size=min_clean_size, close_radius=close_radius,
+                            min_watershed_dist=min_watershed_dist, dapi_watershed=dapi_watershed, dapi_aqp5_watershed=dapi_aqp5_watershed,
+                            sigma=sigma, aqp5_sigma=aqp5_sigma,
+                            spc_watershed=spc_watershed, spc_sigma=spc_sigma, spc_cleansize=spc_cleansize, spc_dilate=spc_dilate,
+                            dapi_colocalize=dapi_colocalize,
+                            plot=True, savedir=savedir, section=None, font=font)
 
+    except ValueError as e:
+        print(e)
+    alldat = aqp5_out
+    
+    count.savefig(aqp5_img, savedir + "aqp5.png")
+    count.savefig(dapi_img, savedir + "dapi.png")
+    count.savefig(full_img, savedir + "full.png")
+    if len(spc_fl) > 0:
+        count.savefig(spc_img, savedir + "spc.png")
+    if len(tdt_fl) > 0:
+        count.savefig(tdt_img, savedir + "tdt.png")
+
+elif toprocess == "rage":
+    dapi_fl = [fl for fl in fls if "dapi" in fl.lower() and all(x.lower() not in fl.lower() for x in ['rage', 'tdt', 'merging', 'merged'])]
+    rage_fl = [fl for fl in fls if "rage" in fl.lower() and all(x.lower() not in fl.lower() for x in ['dapi', 'tdt', 'merging', 'merged'])]
+    tdt_fl = [fl for fl in fls if "rosa" in fl.lower() and all(x.lower() not in fl.lower() for x in ['dapi', 'rage', 'merging', 'merged'])]
+    spc_fl = [fl for fl in fls if "spc" in fl.lower() and all(x.lower() not in fl.lower() for x in ['dapi', 'tdt', 'rosa', 'rage', 'merging', 'merged'])]
+    full_fl = [fl for fl in fls if "merg" in fl.lower()]
+    
+    print("DAPI: " + str(dapi_fl))
+    print("Rage: " + str(rage_fl))
+    print("tdt: " + str(tdt_fl))
+    print("spc: " + str(spc_fl))
+    print("full: " + str(full_fl))
+    
+    dapi_img = process_file(dapi_fl)
+    rage_img = process_file(rage_fl)
+    tdt_img = process_file(tdt_fl)
+    full_img = process_file(full_fl)
+    if len(spc_fl) > 0:
+        spc_img = process_file(spc_fl)
+    
+    try:
+        rage_out = count.main(rage_img=rage_img, tdt_img=tdt_img, spc_img=spc_img, dapi_img=dapi_img, to_process="rage",
+                            min_clean_size=min_clean_size, close_radius=close_radius,
+                            min_watershed_dist=min_watershed_dist, dapi_watershed=dapi_watershed,
+                            sigma=sigma,
+                            dapi_colocalize=dapi_colocalize,
+                            plot=True, savedir=savedir, section=None, font=font)
+    except ValueError as e:
+        print(e)
+    alldat = rage_out
+
+    count.savefig(rage_img, savedir + "rage.png")
+    count.savefig(dapi_img, savedir + "dapi.png")
+    count.savefig(full_img, savedir + "full.png")
+    count.savefig(tdt_img, savedir + "tdt.png")
+    if len(spc_fl) > 0:
+        count.savefig(tdt_img, savedir + "tdt.png")
 
 else:
   raise ValueError(f"Invalid 'toprocess' argument: {toprocess}")
