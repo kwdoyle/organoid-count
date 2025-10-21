@@ -15,11 +15,11 @@ runCountSum <- function(x, formnms, funcrun="split", dapithresh=1000) {
 
 
 coreSummaryFunc <- function(df2, formnms, id) {
-  keynmidx_fulltbl <- which(names(df2) %in% c("section", "id", "type"))
+  keynmidx_fulltbl <- which(names(df2) %in% c("section", "id", "type", "dapi_colocalize"))
   
   # need to remove keynmidx after having removed the "express" names
   names_not_express <- names(df2)[-grep("express", names(df2))]
-  keynmidx <- which(names_not_express %in% c("section", "id", "type"))
+  keynmidx <- which(names_not_express %in% c("section", "id", "type", "dapi_colocalize"))
   regnms <- names_not_express[-keynmidx]
   usenms <- c(regnms, formnms)
   
@@ -657,9 +657,9 @@ makePlotdf <- function(sumout, type, minfo, sex_analyze=NULL) {
   # check if sep section or full lung analysis was used
   # (separate section data would have had the summaries calculated, which were stored as another list element)
   thechk <- unique(unlist(lapply(SumOutUse, class)))
-  if (thechk == "list") {
+  if ("list" %in% thechk) {
     alldfs <- bind_rows(lapply(SumOutUse, `[[`, 1))
-  } else if (thechk == "data.frame") {
+  } else if ("data.frame" %in% thechk) {
     alldfs <- bind_rows(SumOutUse)
   }
   

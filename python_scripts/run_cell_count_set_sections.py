@@ -43,17 +43,21 @@ toprocess = os.path.normpath(sys.argv[3])
 min_clean_size = 5
 close_radius = 3
 min_watershed_dist = 15
+rage_watershed = 7
 dapi_watershed = 7
+hopx_watershed = 8
+aqp5_watershed = 8  #15 #8
 dapi_hopx_watershed = 8
 dapi_aqp5_watershed = 8
 spc_watershed = 15
-spc_cleansize = 1
+spc_cleansize = 1  # 5  # 1
 sigma = 0.5
-spc_sigma = 0.2
+hopx_sigma = 0  # 0.5
+spc_sigma = 0  # 0.2
 aqp5_sigma = 0.5
-spc_dilate = 10
+spc_dilate = 0  # 1  # 10
 font = 15
-dapi_colocalize = True
+dapi_colocalize = False
 
 
 # pull out the ID (the last folder name in the basedir argument) and use it in the output file name
@@ -271,8 +275,9 @@ elif toprocess == "hopx":
         rab_img = None
     try:
         hopx_out = count.main(spc_img=spc_img, tdt_img=tdt_img, dapi_img=dapi_img, hopx_img=hopx_img, rab_img=rab_img, to_process="hopx",
-                            min_clean_size=min_clean_size, close_radius=close_radius, spc_watershed=spc_watershed, spc_sigma=spc_sigma, dapi_hopx_watershed=dapi_hopx_watershed,
-                            min_watershed_dist=min_watershed_dist, dapi_watershed=dapi_watershed, spc_dilate=spc_dilate, spc_cleansize=spc_cleansize, sigma=sigma,
+                            min_clean_size=min_clean_size, close_radius=close_radius, spc_watershed=spc_watershed, spc_sigma=spc_sigma, 
+                            hopx_watershed=hopx_watershed, dapi_hopx_watershed=dapi_hopx_watershed,
+                            min_watershed_dist=min_watershed_dist, dapi_watershed=dapi_watershed, spc_dilate=spc_dilate, spc_cleansize=spc_cleansize, sigma=sigma, hopx_sigma=hopx_sigma,
                             dapi_colocalize=dapi_colocalize,
                             plot=True, savedir=savedir, section=None, font=font)
     except ValueError as e:
@@ -314,7 +319,7 @@ elif toprocess == "aqp5":
     try:
         aqp5_out = count.main(aqp5_img=aqp5_img, tdt_img=tdt_img, spc_img=spc_img, dapi_img=dapi_img, to_process="aqp5",
                             min_clean_size=min_clean_size, close_radius=close_radius,
-                            min_watershed_dist=min_watershed_dist, dapi_watershed=dapi_watershed, dapi_aqp5_watershed=dapi_aqp5_watershed,
+                            min_watershed_dist=min_watershed_dist, aqp5_watershed=aqp5_watershed, dapi_watershed=dapi_watershed, dapi_aqp5_watershed=dapi_aqp5_watershed,
                             sigma=sigma, aqp5_sigma=aqp5_sigma,
                             spc_watershed=spc_watershed, spc_sigma=spc_sigma, spc_cleansize=spc_cleansize, spc_dilate=spc_dilate,
                             dapi_colocalize=dapi_colocalize,
@@ -357,7 +362,7 @@ elif toprocess == "rage":
     try:
         rage_out = count.main(rage_img=rage_img, tdt_img=tdt_img, spc_img=spc_img, dapi_img=dapi_img, to_process="rage",
                             min_clean_size=min_clean_size, close_radius=close_radius,
-                            min_watershed_dist=min_watershed_dist, dapi_watershed=dapi_watershed,
+                            min_watershed_dist=min_watershed_dist, rage_watershed=rage_watershed, dapi_watershed=dapi_watershed,
                             sigma=sigma,
                             spc_watershed=spc_watershed, spc_sigma=spc_sigma, spc_cleansize=spc_cleansize, spc_dilate=spc_dilate,
                             dapi_colocalize=dapi_colocalize,
@@ -371,7 +376,7 @@ elif toprocess == "rage":
     count.savefig(full_img, savedir + "full.png")
     count.savefig(tdt_img, savedir + "tdt.png")
     if len(spc_fl) > 0:
-        count.savefig(tdt_img, savedir + "tdt.png")
+        count.savefig(spc_img, savedir + "spc.png")
 
 else:
   raise ValueError(f"Invalid 'toprocess' argument: {toprocess}")

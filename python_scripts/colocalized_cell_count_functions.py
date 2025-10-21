@@ -116,8 +116,10 @@ def spc(spc_msk, plot, savedir, min_clean_size, dilate_radius, min_watershed_dis
     spc_msk_dilate = morphology.isotropic_dilation(spc_msk_clean, radius=dilate_radius)
     # test shrinking before and after bluring
     # bluring after seems better
-    spc_msk_erode = morphology.binary_erosion(spc_msk_dilate, footprint=disk(3))
-    spc_msk2 = blur_mask(msk=spc_msk_erode, sigma=sigma)
+    # spc_msk_erode = morphology.binary_erosion(spc_msk_dilate, footprint=disk(3))
+    # spc_msk2 = blur_mask(msk=spc_msk_erode, sigma=sigma)
+    # spc_msk2 = blur_mask(msk=spc_msk_dilate, sigma=sigma)
+    spc_msk2 = spc_msk_dilate
 
     n_spc = make_watershed(msk=spc_msk2, min_dist=min_watershed_dist, plot=plot, plt_title=title, savedir=savedir, font=font).max()
 
@@ -374,8 +376,8 @@ def erdr1(erdr1_msk, tdt_msk, rfp670_msk, dapi_msk, plot, savedir, sigma, spc_si
     return outdf
 
 
-def hopx(hopx_msk, dapi_msk, tdt_msk, spc_msk, rab_msk, plot, savedir, sigma, close_radius, min_clean_size, spc_cleansize, single_watershed, dapi_watershed, dapi_hopx_watershed, 
-         spc_watershed, spc_dilate, spc_sigma, dapi_sigma, hopx_spc_clean, hopx_tdt_clean, dapi_colocalize=False, font=0.005, section=None):  # spc_close=3
+def hopx(hopx_msk, dapi_msk, tdt_msk, spc_msk, rab_msk, plot, savedir, sigma, close_radius, min_clean_size, spc_cleansize, single_watershed, hopx_watershed, dapi_watershed, dapi_hopx_watershed, 
+         spc_watershed, spc_dilate, spc_sigma, dapi_sigma, hopx_sigma, hopx_spc_clean, hopx_tdt_clean, dapi_colocalize=False, font=0.005, section=None):  # spc_close=3
     ## this should give counts of raw hopx cells, hopx on dapi cells, hopix/dapi on tdt, hopix/dapi on tdt minus spc
     ## and give intersection coefs for each pair
 
@@ -387,14 +389,15 @@ def hopx(hopx_msk, dapi_msk, tdt_msk, spc_msk, rab_msk, plot, savedir, sigma, cl
     ## hopx alone:
     # clean hopx mask first
     print("processing hopx")
-    hopx_closed = morphology.isotropic_closing(hopx_msk, radius=close_radius)
-    hopx_msk_clean = blur_mask(clean_mask(hopx_closed, minsize=min_clean_size), sigma=sigma)
+    # hopx_closed = morphology.isotropic_closing(hopx_msk, radius=close_radius)
+    # hopx_msk_clean = blur_mask(clean_mask(hopx_closed, minsize=min_clean_size), sigma=hopx_sigma)
+    hopx_msk_clean = blur_mask(clean_mask(hopx_msk, minsize=min_clean_size), sigma=hopx_sigma)
     # clean and check hopx independently as well
     if section is not None:
         title = "hopx_" + str(section)
     else:
         title = "hopx"
-    n_hopx = make_watershed(msk=hopx_msk_clean, min_dist=single_watershed, plot=plot, plt_title=title, savedir=savedir, font=font).max()
+    n_hopx = make_watershed(msk=hopx_msk_clean, min_dist=hopx_watershed, plot=plot, plt_title=title, savedir=savedir, font=font).max()
 
 
     print("Processing dapi & hopx")
@@ -518,7 +521,12 @@ def hopx(hopx_msk, dapi_msk, tdt_msk, spc_msk, rab_msk, plot, savedir, sigma, cl
 
     if rab_msk is not None:
         print("Processing hopx & rab")
-        hopx_rab_msk = make_colocalized_mask(img1=hopx_msk_clean, img2=rab_msk) # TODO should use hopx + dapi mask?
+        if dapi_colocalize:
+            hopx_rab_msk = make_colocalized_mask(img1=hopx_dapi_msk, img2=rab_msk) 
+        else:
+            # hopx_tdt_msk = make_colocalized_mask(img1=hopx_msk_clean, img2=tdt_msk_clean)
+            hopx_rab_msk = make_colocalized_mask(img1=hopx_msk_clean, img2=rab_msk) 
+        # hopx_rab_msk = make_colocalized_mask(img1=hopx_msk_clean, img2=rab_msk) 
         hopx_rab_closed = blur_mask(morphology.isotropic_closing(hopx_rab_msk, radius=close_radius), sigma=sigma)
         if section is not None:
             title = "hopx_rab_colocalized_" + str(section)
@@ -531,12 +539,12 @@ def hopx(hopx_msk, dapi_msk, tdt_msk, spc_msk, rab_msk, plot, savedir, sigma, cl
     # make df
     outdf = pd.DataFrame([{"n_dapi": n_dapi, "n_hopx": n_hopx, "n_spc": n_spc, "n_tdt": n_tdt, "n_tdt_spc": n_tdt_spc, "n_hopx_dapi": n_hopx_dapi, "n_hopx_dapi_tdt": n_hopx_tdt,
                            "n_hopx_dapi_tdt_spc": n_hopx_tdt_spc, "n_hopx_dapi_spc": n_hopx_spc, "n_hopx_dapi_tdt_minus_spc": n_hopx_tdt_minus_spc,
-                           "n_hopx_dapi_minus_spc": n_hopx_dapi_minus_spc, "n_hopx_rab": n_hopx_rab}])
+                           "n_hopx_dapi_minus_spc": n_hopx_dapi_minus_spc, "n_hopx_rab": n_hopx_rab, 'dapi_colocalize': dapi_colocalize}])
 
     return outdf
 
 
-def aqp5(aqp5_msk, dapi_msk, tdt_msk, spc_msk, plot, savedir, sigma, aqp5_sigma, single_watershed, dapi_watershed, dapi_aqp5_watershed, aqp5_spc_clean, aqp5_tdt_clean, 
+def aqp5(aqp5_msk, dapi_msk, tdt_msk, spc_msk, plot, savedir, sigma, aqp5_sigma, single_watershed, aqp5_watershed, dapi_watershed, dapi_aqp5_watershed, aqp5_spc_clean, aqp5_tdt_clean, 
          spc_watershed, spc_sigma, spc_cleansize, spc_dilate, close_radius, min_clean_size, dapi_colocalize=False, section=None, font=0.005):
     ## new way, not counting per cell, but finding overall percentage of aqp5 area over other area
 
@@ -552,7 +560,7 @@ def aqp5(aqp5_msk, dapi_msk, tdt_msk, spc_msk, plot, savedir, sigma, aqp5_sigma,
         title = "aqp5_" + str(section)
     else:
         title = "aqp5"
-    n_aqp5 = make_watershed(msk=aqp5_msk_clean, min_dist=single_watershed, plot=plot, plt_title=title, savedir=savedir, font=font).max()
+    n_aqp5 = make_watershed(msk=aqp5_msk_clean, min_dist=aqp5_watershed, plot=plot, plt_title=title, savedir=savedir, font=font).max()
 
     print("Processing aqp5 & dapi")
     aqp5_dapi_msk = blur_mask(make_colocalized_mask(img1=aqp5_msk_clean, img2=dapi_msk_clean), sigma=sigma)
@@ -695,12 +703,12 @@ def aqp5(aqp5_msk, dapi_msk, tdt_msk, spc_msk, plot, savedir, sigma, aqp5_sigma,
     # make df
     outdf = pd.DataFrame([{"n_dapi": n_dapi, "n_aqp5": n_aqp5, "n_spc": n_spc, "n_tdt": n_tdt, "n_tdt_spc": n_tdt_spc, "n_aqp5_dapi": n_aqp5_dapi, "n_aqp5_dapi_tdt": n_aqp5_tdt,
                            "n_aqp5_dapi_tdt_spc": n_aqp5_tdt_spc, "n_aqp5_dapi_spc": n_aqp5_spc, "n_aqp5_dapi_tdt_minus_spc": n_aqp5_tdt_minus_spc,
-                           "n_aqp5_dapi_minus_spc": n_aqp5_dapi_minus_spc}])
+                           "n_aqp5_dapi_minus_spc": n_aqp5_dapi_minus_spc, 'dapi_colocalized': dapi_colocalize}])
 
     return outdf
 
 
-def rage(rage_msk, dapi_msk, tdt_msk, spc_msk, plot, savedir, sigma, close_radius, min_clean_size, single_watershed, dapi_watershed, rage_spc_clean, rage_tdt_clean, 
+def rage(rage_msk, dapi_msk, tdt_msk, spc_msk, plot, savedir, sigma, close_radius, min_clean_size, single_watershed, rage_watershed, dapi_watershed, rage_spc_clean, rage_tdt_clean, 
          spc_watershed, spc_sigma, spc_cleansize, spc_dilate, dapi_colocalize=False, section=None, font=0.005):
     ## this should give counts of rage cells colocalized with dapi
 
@@ -719,7 +727,7 @@ def rage(rage_msk, dapi_msk, tdt_msk, spc_msk, plot, savedir, sigma, close_radiu
         title = "rage_" + str(section)
     else:
         title = "rage"
-    n_rage = make_watershed(msk=rage_msk_clean, min_dist=single_watershed, plot=plot, plt_title=title, savedir=savedir, font=font).max()
+    n_rage = make_watershed(msk=rage_msk_clean, min_dist=rage_watershed, plot=plot, plt_title=title, savedir=savedir, font=font).max()
 
 
     print("Processing dapi & rage")
@@ -863,9 +871,10 @@ def rage(rage_msk, dapi_msk, tdt_msk, spc_msk, plot, savedir, sigma, close_radiu
 
     outdf = pd.DataFrame([{"n_dapi": n_dapi, "n_rage": n_rage, "n_rage_dapi": n_rage_dapi, "n_spc": n_spc, "n_tdt": n_tdt, "n_tdt_spc": n_tdt_spc, "n_rage_dapi_tdt": n_rage_tdt,
                            "n_rage_dapi_tdt_spc": n_rage_tdt_spc, "n_rage_dapi_spc": n_rage_spc, "n_rage_dapi_tdt_minus_spc": n_rage_tdt_minus_spc,
-                           "n_rage_dapi_minus_spc": n_rage_dapi_minus_spc}])
+                           "n_rage_dapi_minus_spc": n_rage_dapi_minus_spc, 'dapi_colocalized': dapi_colocalize}])
 
     return outdf
+
 
 def recursive_threshold(v_channel, classes=5):
     try:
@@ -907,7 +916,7 @@ def threshold_img(img, classes=3):
 
 def main(to_process, savedir,
          close_radius, min_clean_size, min_watershed_dist, dapi_watershed, sigma, spc_watershed=None, spc_sigma=None, spc_dilate=None, spc_cleansize=None,
-         dapi_hopx_watershed=None, dapi_aqp5_watershed=None, erdr1_sigma=None, dapi_colocalize=True, aqp5_sigma=None,
+         rage_watershed=None, hopx_watershed=None, aqp5_watershed=None, dapi_hopx_watershed=None, dapi_aqp5_watershed=None, erdr1_sigma=None, dapi_colocalize=True, aqp5_sigma=None, hopx_sigma=None,
          dapi_img=None, hopx_img=None, tdt_img=None, spc_img=None, lcn2_img=None, krt8_img=None, aqp5_img=None, erdr1_img=None, gfp_img=None, rfp670_img=None, rab_img=None, rage_img=None,
          plot=False, section=None, font=0.005, stopcheck=True):
 
@@ -918,6 +927,9 @@ def main(to_process, savedir,
     print("close radius: " + str(close_radius))
     print("min clean size: " + str(min_clean_size))
     print("general min watershed dist: " + str(min_watershed_dist))
+    print("rage watershed dist: " + str(rage_watershed))
+    print("hopx watershed dist: " + str(hopx_watershed))
+    print("aqp5 watershed dist: " + str(aqp5_watershed))
     print("dapi hopx watershed dist: " + str(dapi_hopx_watershed))
     print("spc watershed: " + str(spc_watershed))
     print("gaussian blur sigma: " + str(sigma))
@@ -971,14 +983,14 @@ def main(to_process, savedir,
         print("Processing Hopx")
         out = hopx(hopx_msk=thresh_imgs['hopx'], dapi_msk=thresh_imgs['dapi'], tdt_msk=thresh_imgs['tdt'], spc_msk=thresh_imgs['spc'], rab_msk=thresh_imgs['rab'], plot=plot, savedir=savedir,
                          sigma=sigma, close_radius=close_radius, min_clean_size=min_clean_size,
-                         spc_cleansize=spc_cleansize, single_watershed=min_watershed_dist, dapi_watershed=dapi_watershed,
-                         dapi_hopx_watershed=dapi_hopx_watershed, spc_watershed=spc_watershed, spc_dilate=spc_dilate, spc_sigma=spc_sigma,
+                         spc_cleansize=spc_cleansize, single_watershed=min_watershed_dist, hopx_watershed=hopx_watershed, dapi_watershed=dapi_watershed,
+                         dapi_hopx_watershed=dapi_hopx_watershed, spc_watershed=spc_watershed, spc_dilate=spc_dilate, spc_sigma=spc_sigma, hopx_sigma=hopx_sigma,
                          dapi_sigma=sigma, hopx_spc_clean=min_clean_size, hopx_tdt_clean=min_clean_size,
                          section=section, font=font, dapi_colocalize=dapi_colocalize)
     elif to_process == "aqp5":
         print("Processing Aqp5")
         out = aqp5(aqp5_msk=thresh_imgs['aqp5'], dapi_msk=thresh_imgs['dapi'], tdt_msk=thresh_imgs['tdt'], spc_msk=thresh_imgs['spc'], plot=plot, savedir=savedir,
-                         sigma=sigma, aqp5_sigma=aqp5_sigma, single_watershed=min_watershed_dist, dapi_watershed=dapi_watershed, dapi_aqp5_watershed=dapi_aqp5_watershed,
+                         sigma=sigma, aqp5_sigma=aqp5_sigma, single_watershed=min_watershed_dist, aqp5_watershed=aqp5_watershed, dapi_watershed=dapi_watershed, dapi_aqp5_watershed=dapi_aqp5_watershed,
                          spc_watershed=spc_watershed, spc_sigma=spc_sigma, spc_cleansize=spc_cleansize, spc_dilate=spc_dilate,
                          close_radius=close_radius, min_clean_size=min_clean_size, aqp5_spc_clean=min_clean_size, aqp5_tdt_clean=min_clean_size, dapi_colocalize=dapi_colocalize,
                          section=section, font=font)
@@ -987,7 +999,7 @@ def main(to_process, savedir,
         print("Processing Rage")
         out = rage(rage_msk=thresh_imgs['rage'], dapi_msk=thresh_imgs['dapi'], tdt_msk=thresh_imgs['tdt'], spc_msk=thresh_imgs['spc'], plot=plot, savedir=savedir,
                          sigma=sigma, close_radius=close_radius, min_clean_size=min_clean_size, rage_spc_clean=min_clean_size, rage_tdt_clean=min_clean_size,
-                         single_watershed=min_watershed_dist, dapi_watershed=dapi_watershed,
+                         single_watershed=min_watershed_dist, rage_watershed=rage_watershed, dapi_watershed=dapi_watershed, dapi_colocalize=dapi_colocalize,
                          spc_watershed=spc_watershed, spc_sigma=spc_sigma, spc_cleansize=spc_cleansize, spc_dilate=spc_dilate,
                          section=section, font=font)
 
