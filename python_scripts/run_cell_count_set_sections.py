@@ -64,9 +64,9 @@ dapi_colocalize = False
 id_nm = os.path.normpath(basedir).split(os.sep)[-1]
 flnm = '/' + id_nm + '_' + 'count_output.xlsx'
 
-# if os.path.exists(savedir + flnm):
-#     print("File already analyzed")
-#     sys.exit()
+if os.path.exists(savedir + flnm):
+    print("File already analyzed")
+    sys.exit()
     
 fls = os.listdir(basedir)
 
