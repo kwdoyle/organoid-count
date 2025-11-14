@@ -1,5 +1,5 @@
 ---
-title: "Lcn2 Colocalization"
+title: "HopX Organoid Colocalization"
 output: html_document
 date: "`r Sys.Date()`"
 ---
@@ -25,7 +25,7 @@ source(here::here("./Rscripts/colocalization_functions.R"))
 
 ```{r datasetup, include=FALSE, warning=FALSE, message=FALSE}
 
-sex_analyze <- "NA"  # c("M", "F")
+sex_analyze <- c("M", "F")
 correct_p <- TRUE
 # agg_full_img <- FALSE 
 plot_all_agg <- TRUE 
@@ -143,9 +143,9 @@ names(dayGTtests_hopx.plots.l) <- sapply(plot_tst_hopx, function(x) unique(x$wil
 
 
 # replace the param value with the calc_key value
-dayGTtests_hopx <- dayGTtests_hopx %>% 
-  dplyr::rename(param2=param) %>% 
-  left_join(data.frame(nm=names(hopx_calc_key), param=unlist(hopx_calc_key, use.names=F)), by=c("param2"="nm")) 
+dayGTtests_hopx <- dayGTtests_hopx %>%
+  dplyr::rename(param2=param) %>%
+  left_join(data.frame(nm=names(hopx_calc_key), param=unlist(hopx_calc_key, use.names=F)), by=c("param2"="nm"))
 dayGTtests_hopx <- dayGTtests_hopx[,-which(names(dayGTtests_hopx) == "param2")]
 
 
@@ -188,7 +188,7 @@ if (!is.null(hopx_df) & 'section' %in% names(hopx_df)) {
 #### Wilcoxon-Mann-Whitney test performed on 'slices combined' compare GT across mice per day
 #### and GT per day between males and females, separately
 
-```{r plot_facet_hopx, echo=FALSE, fig.height=20, fig.width=19, warning=FALSE, message=FALSE, results='hide', eval=!shownewplot}
+```{r plot_facet_hopx, echo=FALSE, fig.height=20, fig.width=19, warning=FALSE, message=FALSE, results='hide', eval=shownewplot}
 if (!is.null(hopx_df)) {
   # good dims: 6x17
   # new good dims: height=27, width=17
