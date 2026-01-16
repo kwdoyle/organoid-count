@@ -8,3 +8,4 @@ out/
 .Rhistory
 .vscode/
 *.png
+*.pdf
