@@ -1,0 +1,15 @@
+params:
+  min_clean_size: 5
+  close_radius: 3
+  min_watershed_dist: 15
+  dapi_watershed: 7
+  main_watershed: 8
+  dapi_main_watershed: 8
+  spc_watershed: 15
+  spc_cleansize: 1
+  sigma: 0.5
+  main_sigma: 0
+  spc_sigma: 0
+  spc_dilate: 0
+  font: 15
+  dapi_colocalize: true

@@ -1,5 +1,6 @@
 import os
 import sys
+import yaml
 import pandas as pd
 import skimage.io as io
 import colocalized_cell_count_functions as count
@@ -39,25 +40,39 @@ def save_section_figs(section_img, section_name, section_num):
 basedir = os.path.normpath(sys.argv[1])
 savedir = os.path.normpath(sys.argv[2])
 toprocess = os.path.normpath(sys.argv[3])
+if len(sys.argv) > 4:
+    stain_name = os.path.normpath(sys.argv[4])
+    nm_use = stain_name
+else:
+    stain_name = toprocess
+    nm_use = "notused"
+param_file = os.path.normpath(sys.argv[5])
 
-min_clean_size = 5
-close_radius = 3
-min_watershed_dist = 15
-rage_watershed = 7
-dapi_watershed = 7
-hopx_watershed = 8
-aqp5_watershed = 8  #15 #8
-dapi_hopx_watershed = 8
-dapi_aqp5_watershed = 8
-spc_watershed = 15
-spc_cleansize = 1  # 5  # 1
-sigma = 0.5
-hopx_sigma = 0  # 0.5
-spc_sigma = 0  # 0.2
-aqp5_sigma = 0.5
-spc_dilate = 0  # 1  # 10
-font = 15
-dapi_colocalize = False
+# use separate input files containing these parameters for each stain type
+with open(param_file, "r") as f:
+    cfg = yaml.safe_load(f)
+
+p = cfg.get("params", {})
+
+min_clean_size = p['min_clean_size'] #5
+close_radius = p['close_radius'] #3
+min_watershed_dist = p['min_watershed_dist'] #15
+dapi_watershed = p['dapi_watershed'] #7
+main_watershed = p['main_watershed'] #8
+dapi_main_watershed = p['dapi_main_watershed'] #8
+spc_watershed = p['spc_watershed'] #15
+spc_cleansize = p['spc_cleansize']  #1  #10  #1  # 5  # 1
+sigma = p['sigma'] #0.5
+main_sigma = p['main_sigma']  #0
+spc_sigma = p['spc_sigma']  # 0.2
+spc_dilate = p['spc_dilate']  # 0  # 1  # 10
+font = p['font']  # 15
+dapi_colocalize = p['dapi_colocalize']  # True
+
+# # params regarding a generic nuclear stain
+# main_watershed = 8
+# main_sigma = 0
+# dapi_main_watershed = 8
 
 
 # pull out the ID (the last folder name in the basedir argument) and use it in the output file name
@@ -286,6 +301,58 @@ elif toprocess == "hopx":
     alldat = hopx_out
     count.savefig(dapi_img, savedir + "dapi.png")
     count.savefig(hopx_img, savedir + "hopx.png")
+    count.savefig(full_img, savedir + "full.png")
+    if len(spc_fl) > 0:
+        count.savefig(spc_img, savedir + "spc.png")
+    if len(tdt_fl) > 0:
+        count.savefig(tdt_img, savedir + "tdt.png")
+    if len(rab_fl) > 0:
+        count.savefig(rab_img, savedir + "rab.png")
+
+elif toprocess == "nuclear_stain":
+    dapi_fl = [fl for fl in fls if "dapi" in fl.lower() and all(x.lower() not in fl.lower() for x in ['spc', 'tdt', 'merging', 'merged'])]
+    spc_fl = [fl for fl in fls if "spc" in fl.lower() and all(x.lower() not in fl.lower() for x in ['dapi', 'tdt', 'rosa', 'merging', 'merged'])]
+    tdt_fl = [fl for fl in fls if "rosa" in fl.lower() and all(x.lower() not in fl.lower() for x in ['dapi', 'merging', 'merged'])]
+    main_fl = [fl for fl in fls if stain_name in fl.lower() and all(x.lower() not in fl.lower() for x in ['dapi', 'tdt', 'spc', 'merging', 'merged', 'rab'])]
+    rab_fl = [fl for fl in fls if "rab" in fl.lower() and all(x.lower() not in fl.lower() for x in ['dapi', 'tdt', 'spc', 'merging', 'merged'])]
+    full_fl = [fl for fl in fls if "merg" in fl.lower()]
+    print("DAPI: " + str(dapi_fl))
+    print("spc: " + str(spc_fl))
+    print("tdt: " + str(tdt_fl))
+    print(stain_name + ": " + str(main_fl))
+    #print("rab: " + str(rab_fl))
+    print("full: " + str(full_fl))
+    
+    dapi_img = process_file(dapi_fl)
+    main_img = process_file(main_fl)
+    full_img = process_file(full_fl)
+
+    if len(spc_fl) > 0:
+        spc_img = process_file(spc_fl)
+    else:
+        spc_img = None
+    if len(tdt_fl) > 0:
+        tdt_img = process_file(tdt_fl)
+    else:
+        tdt_img = None
+    # if len(rab_fl) > 0:
+    #     rab_img = process_file(rab_fl)
+    # else:
+    #     rab_img = None
+    try:
+        main_out = count.main(spc_img=spc_img, tdt_img=tdt_img, dapi_img=dapi_img, main_img=main_img, to_process="nuclear_stain",
+                            min_clean_size=min_clean_size, close_radius=close_radius, spc_watershed=spc_watershed, spc_sigma=spc_sigma, 
+                            main_watershed=main_watershed, dapi_main_watershed=dapi_main_watershed,
+                            min_watershed_dist=min_watershed_dist, dapi_watershed=dapi_watershed, spc_dilate=spc_dilate, spc_cleansize=spc_cleansize, sigma=sigma, main_sigma=main_sigma,
+                            main_nm=stain_name,
+                            dapi_colocalize=dapi_colocalize,
+                            plot=True, savedir=savedir, section=None, font=font)
+    except ValueError as e:
+        print(e)
+
+    alldat = main_out
+    count.savefig(dapi_img, savedir + "dapi.png")
+    count.savefig(main_img, savedir + "main.png")
     count.savefig(full_img, savedir + "full.png")
     if len(spc_fl) > 0:
         count.savefig(spc_img, savedir + "spc.png")
