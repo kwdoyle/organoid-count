@@ -1,8 +1,26 @@
+source("./Rscripts/FigwStats.R")
 library(readxl)
 library(dplyr)
+library(purrr)
 library(ggplot2)
 
-source("./Rscripts/FigwStats.R")
+
+# run FigwStats2 on each set of input parameters (ie, each kind of bleo day, and area or cfe, and by sex or not)
+runAnalysis <- function(spec, pmth, adjp, addptb) {
+  do.call(FigwStats2, c(spec, list(
+    term="*",
+    pval_method=pmth,
+    adjust_p=adjp,
+    add_emm_table=addptb
+  )))
+}
+
+
+
+# ---- setup ----
+pvalmethod <- "t.test"  # emmeans
+adjust_p <- FALSE
+add_p_table <- FALSE  # if want to use the included table outside of the plot boundary, keep this set to FALSE
 
 orgarea <- read_xlsx('./2025 2026 organoid area CFU.xlsx')
 orgarea$Day <- factor(orgarea$Day, levels=as.character(sort(unique(orgarea$Day))))
@@ -19,6 +37,9 @@ blonly <- orgarea %>%
 # combine days 10 and 14
 blonly$`Bleo day` <- as.character(blonly$`Bleo day`)
 blonly$`Bleo day`[which(blonly$`Bleo day` %in% c(10, 14))] <- "10-14"
+# change names from 0 to 'baseline' and 10-14 to 'post-bleo'
+blonly$`Bleo day` <- ifelse(blonly$`Bleo day` == "0", "Baseline",
+                            ifelse(blonly$`Bleo day` == "10-14", "Post-Bleo", NA_character_))
 
 blonly$log_area <- log(blonly$`Area (^inch)`)
 
@@ -43,59 +64,161 @@ CFEsub_bl2 <- unique(blonly2[ , c("Sex", "Day", "Genotype", "Bleo day", "Mouse I
 
 
 
-# ---- Area Plots ----
+# ---- make ALL figures at once ----
+
+# define parameters for each
+specs <- list(
+  area_bleo = list(
+    df=blonly, indep_var="log_area", dep_vars=c("Genotype", "`Bleo day`"),
+    jitter_color="Genotype"),
+  
+  area_bleo_sex = list(
+    df=blonly, indep_var="log_area", dep_vars=c("Genotype", "`Bleo day`","Sex"),
+    jitter_color="Genotype"),
+  
+  area_postbleo = list(
+    df=blonly2, indep_var="log_area", dep_vars=c("Genotype", "Day"),
+    jitter_color="Genotype", outlier_shape=NA, table_place="left"),
+  
+  area_postbleo_sex = list(
+    df=blonly2, indep_var="log_area", dep_vars=c("Genotype","Day","Sex"),
+    jitter_color="Genotype", outlier_shape=NA, table_place="left"),
+  
+  cfe_bleo = list(
+    df=CFEsub_bl, indep_var="CFE", dep_vars=c("Genotype","`Bleo day`"),
+    jitter_color=NULL),
+  
+  cfe_bleo_sex = list(
+    df=CFEsub_bl, indep_var="CFE", dep_vars=c("Genotype","`Bleo day`","Sex"),
+    jitter_color=NULL),
+  
+  cfe_postbleo = list(
+    df=CFEsub_bl2, indep_var="CFE", dep_vars=c("Genotype","Day"),
+    jitter_color=NULL),
+  
+  cfe_postbleo_sex = list(
+    df=CFEsub_bl2, indep_var="CFE", dep_vars=c("Genotype","Day","Sex"),
+    jitter_color=NULL)
+)
+
+# make figures/stats on everything
+results <- imap(specs, ~runAnalysis(.x, pmth=pvalmethod, adjp=adjust_p, addptb=add_p_table))
+
+# and save them all
+iwalk(figs, ~ggsave(
+  filename = paste0("./figures/", .y, ".png"),
+  plot = .x,
+  width = 12.21, height = 12.375, units = "in"
+))
+
+
+
+
+
+# ---- Area Plots - OLD w/ repeated function call ----
 # see if this works. Yes, this works.
 # Just Bleo Day(s) v Genotype
-blday_area <- FigwStats(df=blonly, indep_var="log_area", dep_vars=c("Genotype", "`Bleo day`"), term="*", jitter_color="Genotype")
+blday_area <- FigwStats2(df=blonly, indep_var="log_area", dep_vars=c("Genotype", "`Bleo day`"), term="*", jitter_color="Genotype",
+                        pval_method=pvalmethod, adjust_p=adjust_p, add_emm_table=add_p_table)
 blday_area$fig
 blday_area$anova
+blday_area$es
 blday_area$emm
 
 # Just Bleo Day(s) v Genotype and Sex
-blday_area_sex <- FigwStats(df=blonly, indep_var="log_area", dep_vars=c("Genotype", "`Bleo day`", "Sex"), term="*", jitter_color="Genotype")
+blday_area_sex <- FigwStats2(df=blonly, indep_var="log_area", dep_vars=c("Genotype", "`Bleo day`", "Sex"), term="*", jitter_color="Genotype",
+                            pval_method=pvalmethod, adjust_p=adjust_p, add_emm_table=add_p_table)
 blday_area_sex$fig
 blday_area_sex$anova
+blday_area_sex$es
 blday_area_sex$emm
 
 # Experiment days v Genotype 
-experday_area <- FigwStats(df=blonly2, indep_var="log_area", dep_vars=c("Genotype", "Day"), term="*", jitter_color="Genotype", outlier_shape = NA)
+experday_area <- FigwStats2(df=blonly2, indep_var="log_area", dep_vars=c("Genotype", "Day"), term="*", jitter_color="Genotype", outlier_shape = NA,
+                           pval_method=pvalmethod, adjust_p=adjust_p, table_place="left", add_emm_table=add_p_table)
 experday_area$fig
 experday_area$anova
+experday_area$es
 experday_area$emm
 
 # Experiment days v Genotype  and Sex
-experday_area_sex <- FigwStats(df=blonly2, indep_var="log_area", dep_vars=c("Genotype", "Day", "Sex"), term="*", jitter_color="Genotype", outlier_shape = NA)
+experday_area_sex <- FigwStats2(df=blonly2, indep_var="log_area", dep_vars=c("Genotype", "Day", "Sex"), term="*", jitter_color="Genotype", outlier_shape = NA,
+                               pval_method=pvalmethod, adjust_p=adjust_p, table_place="left", add_emm_table=add_p_table)
 experday_area_sex$fig
 experday_area_sex$anova
+experday_area_sex$es
 experday_area_sex$emm
 
 
 
-# ---- CFE plots ----
+# ---- CFE plots - OLD w/ repeated function call ----
 
 # Bleo days v genotype
-blday_cfe <- FigwStats(df=CFEsub_bl, indep_var="CFE", dep_vars=c("Genotype", "`Bleo day`"), term="*", jitter_color=NULL)
+blday_cfe <- FigwStats2(df=CFEsub_bl, indep_var="CFE", dep_vars=c("Genotype", "`Bleo day`"), term="*", jitter_color=NULL,
+                       pval_method=pvalmethod, adjust_p=adjust_p, add_emm_table=add_p_table)
 blday_cfe$fig
 blday_cfe$anova
+blday_cfe$es
 blday_cfe$emm
 
 # Bleo days v genotype and sex
-blday_cfe_sex <- FigwStats(df=CFEsub_bl, indep_var="CFE", dep_vars=c("Genotype", "`Bleo day`", "Sex"), term="*", jitter_color=NULL)
+blday_cfe_sex <- FigwStats2(df=CFEsub_bl, indep_var="CFE", dep_vars=c("Genotype", "`Bleo day`", "Sex"), term="*", jitter_color=NULL,
+                           pval_method=pvalmethod, adjust_p=adjust_p, add_emm_table=add_p_table)
 blday_cfe_sex$fig
 blday_cfe_sex$anova
+blday_cfe_sex$es
 blday_cfe_sex$emm
 
 
-experday_cfe <- FigwStats(df=CFEsub_bl2, indep_var="CFE", dep_vars=c("Genotype", "Day"), term="*", jitter_color=NULL)
+# Experiment day v genotype
+experday_cfe <- FigwStats2(df=CFEsub_bl2, indep_var="CFE", dep_vars=c("Genotype", "Day"), term="*", jitter_color=NULL,
+                          pval_method=pvalmethod, adjust_p=adjust_p, add_emm_table=add_p_table)
 experday_cfe$fig
 experday_cfe$anova
+experday_cfe$es
 experday_cfe$emm
 
 
-experday_cfe_sex <- FigwStats(df=CFEsub_bl2, indep_var="CFE", dep_vars=c("Genotype", "Day", "Sex"), term="*", jitter_color=NULL)
+# Experiment day v genotype and sex
+# NOTE: if wish to check different post-hoc comparisons (e.g., CFE between sex FOR a given genotype on a given day),
+# can just change the order of the dep_vars like so:
+# experday_cfe_sex <- FigwStats(df=CFEsub_bl2, indep_var="CFE", dep_vars=c("Sex", "Genotype", "Day"), term="*", jitter_color=NULL)
+experday_cfe_sex <- FigwStats2(df=CFEsub_bl2, indep_var="CFE", dep_vars=c("Genotype", "Day", "Sex"), term="*", jitter_color=NULL,
+                              pval_method=pvalmethod, adjust_p=adjust_p, add_emm_table=add_p_table)
 experday_cfe_sex$fig
 experday_cfe_sex$anova
+experday_cfe_sex$es
 experday_cfe_sex$emm
+
+
+
+# ---- save figures ----
+areafigs <- list(area_bleo = blday_area$fig,
+                 area_bleo_sex = blday_area_sex$fig,
+                 area_postbleo = experday_area$fig,
+                 area_postbleo_sex = experday_area_sex$fig)
+
+cfefigs <- list(cfe_bleo = blday_cfe$fig,
+                cfe_bleo_sex = blday_cfe_sex$fig,
+                cfe_postbleo = experday_cfe$fig,
+                cfe_postbleo_sex = experday_cfe_sex$fig)
+
+
+lapply(names(areafigs), function(x) {
+  ggsave(filename=paste0("./figures/", x, ".png"), plot=areafigs[[x]],
+         width = 12.21, height = 12.375, units = "in")
+         # width = 10.175, height = 10.3125, units = "in")
+         # width = 8.14, height = 8.25, units = "in")  # the default sizes
+})
+
+lapply(names(cfefigs), function(x) {
+  ggsave(filename=paste0("./figures/", x, ".png"), plot=cfefigs[[x]],
+         width = 12.21, height = 12.375, units = "in")
+         # width = 8.14, height = 8.25, units = "in")  # the default sizes
+})
+
+# ggsave(filename="./figures/area_bleo.png", plot=areafigs$area_bleo)
+
 
 
 
